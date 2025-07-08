@@ -1,0 +1,104 @@
+{
+  "project_info": {
+    "project_number": "976230002574",
+    "project_id": "gestion-de-residuos-ec0a2",
+    "storage_bucket": "gestion-de-residuos-ec0a2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976230002574:android:f766748778e3f188707edf",
+        "android_client_info": {
+          "package_name": "com.example.firebase_prueba2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "976230002574-3vdslqbq5ocmjpje13ngq6p5j901ja9o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.firebase_prueba2",
+            "certificate_hash": "f10278ae44ebf856980f2032426fd7e672ae538e"
+          }
+        },
+        {
+          "client_id": "976230002574-qvs9aqs5jh9p68j09rdr5i85elhg1tm2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKBO2IATVQzFQSf8Uq6MiU_v1Dua-yPFM"
+        },
+        {
+          "current_key": "AIzaSyCy3zRVuZkc4Mv6stnC7lPptX1tniXjxiw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "976230002574-qvs9aqs5jh9p68j09rdr5i85elhg1tm2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "976230002574-oo371fo2mva1gsf4kimcjorqvvq6jv5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.firebasePrueba2"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976230002574:android:b49ec71599a7dce3707edf",
+        "android_client_info": {
+          "package_name": "com.example.gestion_de_residuos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "976230002574-b0q7elov7c09omhur1c6m8qufpphka20.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.gestion_de_residuos",
+            "certificate_hash": "f10278ae44ebf856980f2032426fd7e672ae538e"
+          }
+        },
+        {
+          "client_id": "976230002574-qvs9aqs5jh9p68j09rdr5i85elhg1tm2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKBO2IATVQzFQSf8Uq6MiU_v1Dua-yPFM"
+        },
+        {
+          "current_key": "AIzaSyCy3zRVuZkc4Mv6stnC7lPptX1tniXjxiw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "976230002574-qvs9aqs5jh9p68j09rdr5i85elhg1tm2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "976230002574-oo371fo2mva1gsf4kimcjorqvvq6jv5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.firebasePrueba2"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
