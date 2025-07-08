@@ -26,17 +26,65 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
   };
   dynamic selectedImage;
   bool isLoading = false;
+  String? userRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        userRole = userDoc.data()?['role'] ?? 'usuario';
+        print('Rol del usuario cargado: $userRole');
+      });
+      if (userRole != 'usuario') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Solo los usuarios pueden registrar quejas desde esta pantalla.')),
+        );
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } catch (e) {
+      print('Error al obtener el rol: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al cargar permisos. Contacta al administrador.')),
+      );
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1920, imageQuality: 85);
     if (pickedFile != null) {
-      if (kIsWeb) {
-        final bytes = await pickedFile.readAsBytes();
-        if ((await isValidImageBytes(bytes)).isValid) setState(() => selectedImage = bytes);
-      } else {
-        final file = File(pickedFile.path);
-        if ((await isValidImageFile(file)).isValid) setState(() => selectedImage = file);
+      try {
+        if (kIsWeb) {
+          final bytes = await pickedFile.readAsBytes();
+          if ((await isValidImageBytes(bytes)).isValid) {
+            setState(() => selectedImage = bytes);
+          } else {
+            throw Exception('Imagen inválida en web');
+          }
+        } else {
+          final file = File(pickedFile.path);
+          if ((await isValidImageFile(file)).isValid) {
+            setState(() => selectedImage = file);
+          } else {
+            throw Exception('Imagen inválida en móvil');
+          }
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al seleccionar imagen: $e')),
+        );
       }
     }
   }
@@ -51,16 +99,20 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         if (user == null) throw Exception('Usuario no autenticado');
         await user.getIdToken(true);
 
-        String? imageUrl = selectedImage != null
-            ? await _uploadImage(user.uid, selectedImage)
-            : null;
-        final userData = (await FirebaseFirestore.instance.collection('users').doc(user.uid).get()).data() ?? {};
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final userData = userDoc.data() ?? {};
         final fullName = userData['displayName'] ?? 'Sin nombre';
         final idNumber = userData['idNumber'] ?? 'No disponible';
         final phone = userData['phone'] ?? 'No disponible';
 
-        if (['Sin nombre', 'No disponible'].contains(fullName) || ['No disponible'].contains(idNumber) || ['No disponible'].contains(phone)) {
-          throw Exception('Perfil incompleto');
+        if (fullName == 'Sin nombre' || idNumber == 'No disponible' || phone == 'No disponible') {
+          Navigator.pushReplacementNamed(context, '/profile_setup');
+          throw Exception('Por favor, completa tu perfil con nombre, cédula y teléfono.');
+        }
+
+        String? imageUrl;
+        if (selectedImage != null) {
+          imageUrl = await _uploadImage(user.uid, selectedImage);
         }
 
         await FirebaseFirestore.instance.collection('complaints').add({
@@ -77,13 +129,13 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           'phone': phone,
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Queja enviada exitosamente')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Queja enviada exitosamente')),
+        );
         Navigator.pop(context);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().contains('Perfil incompleto')
-              ? 'Por favor, completa tu perfil'
-              : 'Error al enviar queja: $e')),
+          SnackBar(content: Text('Error al enviar queja: $e')),
         );
       } finally {
         setState(() => isLoading = false);
@@ -92,16 +144,21 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
   }
 
   Future<String?> _uploadImage(String userId, dynamic image) async {
-    final imageBytes = image is File ? await image.readAsBytes() : image as Uint8List;
-    final decodedImage = img.decodeImage(imageBytes);
-    if (decodedImage == null) throw Exception('Fallo al decodificar imagen');
-    final uploadBytes = img.encodeJpg(decodedImage, quality: 85);
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('complaints/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg');
-    final uploadTask = storageRef.putData(uploadBytes, SettableMetadata(contentType: 'image/jpeg'));
-    await uploadTask.whenComplete(() {});
-    return await storageRef.getDownloadURL();
+    try {
+      final imageBytes = image is File ? await image.readAsBytes() : image as Uint8List;
+      final decodedImage = img.decodeImage(imageBytes);
+      if (decodedImage == null) throw Exception('Fallo al decodificar imagen');
+      final uploadBytes = img.encodeJpg(decodedImage, quality: 85);
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('complaints/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = storageRef.putData(uploadBytes, SettableMetadata(contentType: 'image/jpeg'));
+      await uploadTask.whenComplete(() {});
+      return await storageRef.getDownloadURL();
+    } catch (e) {
+      print('Error al subir imagen: $e');
+      throw Exception('Error al subir imagen: $e');
+    }
   }
 
   @override
@@ -112,6 +169,12 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (userRole == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Colors.green)),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Registrar Queja', style: TextStyle(color: Colors.white)),
@@ -158,13 +221,13 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.camera),
+                  onPressed: isLoading ? null : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Tomar foto'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.gallery),
+                  onPressed: isLoading ? null : () => _pickImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo),
                   label: const Text('Subir imagen'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
@@ -202,6 +265,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
       decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
       maxLines: maxLines,
       validator: validator,
+      enabled: !isLoading,
     );
   }
 
@@ -210,7 +274,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
       value: _controllers[key]!.text.isNotEmpty ? _controllers[key]!.text : null,
       hint: Text(hint),
       items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-      onChanged: (value) => setState(() => _controllers[key]!.text = value ?? ''),
+      onChanged: isLoading ? null : (value) => setState(() => _controllers[key]!.text = value ?? ''),
       validator: validator,
       decoration: const InputDecoration(border: OutlineInputBorder()),
     );

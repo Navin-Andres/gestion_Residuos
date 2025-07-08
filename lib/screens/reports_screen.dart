@@ -19,7 +19,7 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  String? userRole = 'loading'; // Estado inicial para indicar carga
+  String? userRole;
   final Set<String> _selectedComplaints = {};
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -28,15 +28,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    // Limpiar caché de imágenes problemáticas
-    const problematicUrls = [
-      'https://firebasestorage.googleapis.com/v0/b/gestion-de-residuos-ec0a2.firebasestorage.app/o/complaints%2F47sYzQtbGrc8hffLK2KTBwephxB3%2F1751607955674.jpg?alt=media&token=09aefdcb-fd15-44db-9b16-c23820112e18',
-      'https://firebasestorage.googleapis.com/v0/b/gestion-de-residuos-ec0a2.firebasestorage.app/o/complaints%2F47sYzQtbGrc8hffLK2KTBwephxB3%2F1751635785331.jpg?alt=media&token=c438bf28-b225-4869-b09a-9241f4c8dacb',
-    ];
-    for (var url in problematicUrls) {
-      CachedNetworkImage.evictFromCache(url);
-      print("Caché limpiada para $url en ${DateTime.now()} en plataforma: ${kIsWeb ? 'web' : 'móvil'}");
-    }
     _fetchUserRole();
   }
 
@@ -44,50 +35,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final user = _auth.currentUser;
     if (user == null) {
       setState(() {
-        userRole = 'anonymous';
-        print("Usuario no autenticado en ${DateTime.now()}");
+        userRole = null;
+        print('Usuario no autenticado en ${DateTime.now()}');
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debes iniciar sesión para acceder.')),
-      );
       Navigator.pushReplacementNamed(context, '/login');
       return;
     }
     try {
-      await user.getIdToken(true); // Renovar token
+      await user.getIdToken(true);
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      if (!userDoc.exists || userDoc.data()?['role'] == null) {
-        setState(() {
-          userRole = 'anonymous';
-          print("Rol no encontrado para UID: ${user.uid} en ${DateTime.now()}");
-        });
+      setState(() {
+        userRole = userDoc.data()?['role'] ?? 'usuario';
+        print('Rol del usuario cargado: $userRole para UID: ${user.uid} en ${DateTime.now()}');
+      });
+      if (userRole != 'empresa' && userRole != 'autoridad') {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor, completa tu perfil con un rol válido.')),
+          const SnackBar(content: Text('Solo empresas o autoridades pueden acceder a esta pantalla.')),
         );
-      } else {
-        setState(() {
-          userRole = userDoc.data()?['role'] as String? ?? 'anonymous';
-          print("Rol del usuario cargado: $userRole para UID: ${user.uid} en ${DateTime.now()}");
-        });
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
-      print("Error al obtener el rol: $e en ${DateTime.now()}");
+      print('Error al obtener el rol: $e en ${DateTime.now()}');
       setState(() {
-        userRole = 'anonymous';
+        userRole = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudieron cargar los permisos. Contacta al administrador.')),
+        const SnackBar(content: Text('Error al cargar permisos. Contacta al administrador.')),
       );
+      Navigator.pushReplacementNamed(context, '/login');
     }
   }
 
   Future<void> _deleteSelectedComplaints() async {
-    if (userRole != 'admin' && userRole != 'empresa') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo administradores o empresas pueden eliminar quejas')),
-      );
-      return;
-    }
+    if (userRole != 'empresa' && userRole != 'autoridad') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -117,13 +97,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
           try {
             final ref = _storage.refFromURL(imageUrl);
             await ref.delete();
-            print("Imagen eliminada: $imageUrl en ${DateTime.now()}");
+            print('Imagen eliminada: $imageUrl en ${DateTime.now()}');
           } catch (e) {
-            print("Error al eliminar imagen: $e en ${DateTime.now()}");
+            print('Error al eliminar imagen: $e en ${DateTime.now()}');
           }
         }
         await _firestore.collection('complaints').doc(docId).delete();
-        print("Queja eliminada: $docId en ${DateTime.now()}");
+        print('Queja eliminada: $docId en ${DateTime.now()}');
       }
       setState(() {
         _selectedComplaints.clear();
@@ -132,7 +112,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SnackBar(content: Text('Quejas eliminadas exitosamente')),
       );
     } catch (e) {
-      print("Error al eliminar quejas: $e en ${DateTime.now()}");
+      print('Error al eliminar quejas: $e en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al eliminar quejas: $e')),
       );
@@ -140,12 +120,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _deleteAllComplaints() async {
-    if (userRole != 'admin' && userRole != 'empresa') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo administradores o empresas pueden eliminar quejas')),
-      );
-      return;
-    }
+    if (userRole != 'empresa' && userRole != 'autoridad') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -175,13 +150,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
           try {
             final ref = _storage.refFromURL(imageUrl);
             await ref.delete();
-            print("Imagen eliminada: $imageUrl en ${DateTime.now()}");
+            print('Imagen eliminada: $imageUrl en ${DateTime.now()}');
           } catch (e) {
-            print("Error al eliminar imagen: $e en ${DateTime.now()}");
+            print('Error al eliminar imagen: $e en ${DateTime.now()}');
           }
         }
         await doc.reference.delete();
-        print("Queja eliminada: ${doc.id} en ${DateTime.now()}");
+        print('Queja eliminada: ${doc.id} en ${DateTime.now()}');
       }
       setState(() {
         _selectedComplaints.clear();
@@ -190,7 +165,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SnackBar(content: Text('Todas las quejas han sido eliminadas')),
       );
     } catch (e) {
-      print("Error al eliminar todas las quejas: $e en ${DateTime.now()}");
+      print('Error al eliminar todas las quejas: $e en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al eliminar todas las quejas: $e')),
       );
@@ -198,12 +173,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _deleteComplaint(String docId, String? imageUrl) async {
-    if (userRole != 'admin' && userRole != 'empresa') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo administradores o empresas pueden eliminar quejas')),
-      );
-      return;
-    }
+    if (userRole != 'empresa' && userRole != 'autoridad') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -230,28 +200,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
         try {
           final ref = _storage.refFromURL(imageUrl);
           await ref.delete();
-          print("Imagen eliminada: $imageUrl en ${DateTime.now()}");
+          print('Imagen eliminada: $imageUrl en ${DateTime.now()}');
         } catch (e) {
-          if (e.toString().contains('unauthorized')) {
-            print("Error de permisos al eliminar imagen: $e en ${DateTime.now()}");
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No tienes permisos para eliminar la imagen. Contacta al administrador.')),
-            );
-          } else {
-            print("Error al eliminar imagen: $e en ${DateTime.now()}");
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error al eliminar imagen: $e')),
-            );
-          }
+          print('Error al eliminar imagen: $e en ${DateTime.now()}');
         }
       }
       await _firestore.collection('complaints').doc(docId).delete();
-      print("Queja eliminada: $docId en ${DateTime.now()}");
+      print('Queja eliminada: $docId en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Queja eliminada exitosamente')),
       );
     } catch (e) {
-      print("Error al eliminar queja: $e en ${DateTime.now()}");
+      print('Error al eliminar queja: $e en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al eliminar queja: $e')),
       );
@@ -259,12 +219,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _editComplaint(String docId, Map<String, dynamic> currentData) async {
-    if (userRole != 'admin' && userRole != 'empresa') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo administradores o empresas pueden editar quejas')),
-      );
-      return;
-    }
+    if (userRole != 'empresa' && userRole != 'autoridad') return;
 
     final descriptionController = TextEditingController(text: currentData['description'] ?? '');
     final addressController = TextEditingController(text: currentData['address'] ?? '');
@@ -286,7 +241,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             if (validation.isValid) {
               selectedImage = bytes;
             } else {
-              throw Exception("Imagen inválida (web): ${validation.error}");
+              throw Exception('Imagen inválida (web): ${validation.error}');
             }
           } else {
             final file = File(pickedFile.path);
@@ -299,12 +254,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               }
               selectedImage = file;
             } else {
-              throw Exception("Imagen inválida (móvil): ${validation.error}");
+              throw Exception('Imagen inválida (móvil): ${validation.error}');
             }
           }
         }
       } catch (e) {
-        print("Error al seleccionar imagen: $e en ${DateTime.now()}");
+        print('Error al seleccionar imagen: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al seleccionar imagen: $e')),
         );
@@ -329,16 +284,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   controller: descriptionController,
                   decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder()),
                   maxLines: 4,
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: addressController,
                   decoration: const InputDecoration(labelText: 'Dirección', border: OutlineInputBorder()),
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: neighborhoodController,
                   decoration: const InputDecoration(labelText: 'Barrio', border: OutlineInputBorder()),
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
@@ -349,7 +307,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     DropdownMenuItem(value: 'Autoridad Ambiental', child: Text('Autoridad Ambiental')),
                     DropdownMenuItem(value: 'Alcaldía de Valledupar', child: Text('Alcaldía de Valledupar')),
                   ],
-                  onChanged: (String? newValue) {
+                  onChanged: isLoading ? null : (String? newValue) {
                     setDialogState(() {
                       if (newValue != null) {
                         recipientController.text = newValue;
@@ -367,7 +325,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     DropdownMenuItem(value: 'En Proceso', child: Text('En Proceso')),
                     DropdownMenuItem(value: 'Resuelto', child: Text('Resuelto')),
                   ],
-                  onChanged: (String? newValue) {
+                  onChanged: isLoading ? null : (String? newValue) {
                     setDialogState(() {
                       if (newValue != null) {
                         status = newValue;
@@ -381,13 +339,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => pickImage(ImageSource.camera),
+                      onPressed: isLoading ? null : () => pickImage(ImageSource.camera),
                       icon: const Icon(Icons.camera_alt),
                       label: const Text('Tomar foto'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
                     ),
                     ElevatedButton.icon(
-                      onPressed: () => pickImage(ImageSource.gallery),
+                      onPressed: isLoading ? null : () => pickImage(ImageSource.gallery),
                       icon: const Icon(Icons.photo),
                       label: const Text('Subir imagen'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
@@ -409,7 +367,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {
+                    onPressed: isLoading ? null : () {
                       setDialogState(removeImage);
                     },
                   ),
@@ -420,7 +378,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: isLoading ? null : () => Navigator.pop(context),
               child: const Text('Cancelar', style: TextStyle(color: Colors.green)),
             ),
             TextButton(
@@ -466,20 +424,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           if (selectedImage is File) {
                             final validation = await isValidImageFile(selectedImage);
                             if (!validation.isValid) {
-                              throw Exception("Archivo de imagen inválido ($source): ${validation.error}");
+                              throw Exception('Archivo de imagen inválido ($source): ${validation.error}');
                             }
                             imageBytes = await selectedImage.readAsBytes();
                           } else {
                             final validation = await isValidImageBytes(selectedImage);
                             if (!validation.isValid) {
-                              throw Exception("Datos de imagen inválidos ($source): ${validation.error}");
+                              throw Exception('Datos de imagen inválidos ($source): ${validation.error}');
                             }
                             imageBytes = selectedImage;
                           }
 
                           final decodedImage = img.decodeImage(imageBytes);
                           if (decodedImage == null) {
-                            throw Exception("Fallo al decodificar la imagen ($source) en ${DateTime.now()}");
+                            throw Exception('Fallo al decodificar la imagen ($source) en ${DateTime.now()}');
                           }
                           imageBytes = img.encodeJpg(decodedImage, quality: 85);
 
@@ -487,9 +445,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             try {
                               final ref = _storage.refFromURL(imageUrl!);
                               await ref.delete();
-                              print("Imagen antigua eliminada: $imageUrl en ${DateTime.now()}");
+                              print('Imagen antigua eliminada: $imageUrl en ${DateTime.now()}');
                             } catch (e) {
-                              print("Error al eliminar imagen antigua: $e en ${DateTime.now()}");
+                              print('Error al eliminar imagen antigua: $e en ${DateTime.now()}');
                             }
                           }
 
@@ -499,10 +457,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           final uploadTask = ref.putData(imageBytes, SettableMetadata(contentType: 'image/$format'));
                           final snapshot = await uploadTask.whenComplete(() => print('Subida completada en ${DateTime.now()}'));
                           if (snapshot.state != TaskState.success) {
-                            throw Exception("Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}");
+                            throw Exception('Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}');
                           }
                           newImageUrl = await ref.getDownloadURL();
-                          print("Imagen subida: $newImageUrl ($source) en ${DateTime.now()}");
+                          print('Imagen subida: $newImageUrl ($source) en ${DateTime.now()}');
                         }
 
                         await _firestore.collection('complaints').doc(docId).update({
@@ -515,22 +473,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           'updatedAt': FieldValue.serverTimestamp(),
                         });
 
-                        print("Queja actualizada: $docId en ${DateTime.now()}");
+                        print('Queja actualizada: $docId en ${DateTime.now()}');
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Queja actualizada exitosamente')),
                         );
                         Navigator.pop(context);
                       } catch (e) {
-                        print("Error al actualizar queja: $e en ${DateTime.now()}");
-                        if (e.toString().contains('permission-denied') || e.toString().contains('unauthorized')) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('No tienes permisos para realizar esta acción.')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error al actualizar queja: $e')),
-                          );
-                        }
+                        print('Error al actualizar queja: $e en ${DateTime.now()}');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al actualizar queja: $e')),
+                        );
                       } finally {
                         setDialogState(() {
                           isLoading = false;
@@ -552,18 +504,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _createComplaint() async {
     if (_auth.currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debes iniciar sesión para crear una queja.')),
-      );
       Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-    if (userRole != 'admin' && userRole != 'empresa') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo administradores o empresas pueden crear quejas')),
-      );
-      return;
-    }
+    if (userRole != 'empresa' && userRole != 'autoridad') return;
 
     final descriptionController = TextEditingController();
     final addressController = TextEditingController();
@@ -584,7 +528,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             if (validation.isValid) {
               selectedImage = bytes;
             } else {
-              throw Exception("Imagen inválida (web): ${validation.error}");
+              throw Exception('Imagen inválida (web): ${validation.error}');
             }
           } else {
             final file = File(pickedFile.path);
@@ -597,12 +541,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               }
               selectedImage = file;
             } else {
-              throw Exception("Imagen inválida (móvil): ${validation.error}");
+              throw Exception('Imagen inválida (móvil): ${validation.error}');
             }
           }
         }
       } catch (e) {
-        print("Error al seleccionar imagen: $e en ${DateTime.now()}");
+        print('Error al seleccionar imagen: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al seleccionar imagen: $e')),
         );
@@ -626,16 +570,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   controller: descriptionController,
                   decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder()),
                   maxLines: 4,
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: addressController,
                   decoration: const InputDecoration(labelText: 'Dirección', border: OutlineInputBorder()),
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: neighborhoodController,
                   decoration: const InputDecoration(labelText: 'Barrio', border: OutlineInputBorder()),
+                  enabled: !isLoading,
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
@@ -646,7 +593,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     DropdownMenuItem(value: 'Autoridad Ambiental', child: Text('Autoridad Ambiental')),
                     DropdownMenuItem(value: 'Alcaldía de Valledupar', child: Text('Alcaldía de Valledupar')),
                   ],
-                  onChanged: (String? newValue) {
+                  onChanged: isLoading ? null : (String? newValue) {
                     setDialogState(() {
                       if (newValue != null) {
                         recipientController.text = newValue;
@@ -664,7 +611,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     DropdownMenuItem(value: 'En Proceso', child: Text('En Proceso')),
                     DropdownMenuItem(value: 'Resuelto', child: Text('Resuelto')),
                   ],
-                  onChanged: (String? newValue) {
+                  onChanged: isLoading ? null : (String? newValue) {
                     setDialogState(() {
                       if (newValue != null) {
                         status = newValue;
@@ -678,13 +625,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => pickImage(ImageSource.camera),
+                      onPressed: isLoading ? null : () => pickImage(ImageSource.camera),
                       icon: const Icon(Icons.camera_alt),
                       label: const Text('Tomar foto'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
                     ),
                     ElevatedButton.icon(
-                      onPressed: () => pickImage(ImageSource.gallery),
+                      onPressed: isLoading ? null : () => pickImage(ImageSource.gallery),
                       icon: const Icon(Icons.photo),
                       label: const Text('Subir imagen'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
@@ -698,7 +645,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       : Image.file(selectedImage as File, height: 100, fit: BoxFit.cover),
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {
+                    onPressed: isLoading ? null : () {
                       setDialogState(removeImage);
                     },
                   ),
@@ -709,7 +656,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: isLoading ? null : () => Navigator.pop(context),
               child: const Text('Cancelar', style: TextStyle(color: Colors.green)),
             ),
             TextButton(
@@ -755,20 +702,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           if (selectedImage is File) {
                             final validation = await isValidImageFile(selectedImage);
                             if (!validation.isValid) {
-                              throw Exception("Archivo de imagen inválido ($source): ${validation.error}");
+                              throw Exception('Archivo de imagen inválido ($source): ${validation.error}');
                             }
                             imageBytes = await selectedImage.readAsBytes();
                           } else {
                             final validation = await isValidImageBytes(selectedImage);
                             if (!validation.isValid) {
-                              throw Exception("Datos de imagen inválidos ($source): ${validation.error}");
+                              throw Exception('Datos de imagen inválidos ($source): ${validation.error}');
                             }
                             imageBytes = selectedImage;
                           }
 
                           final decodedImage = img.decodeImage(imageBytes);
                           if (decodedImage == null) {
-                            throw Exception("Fallo al decodificar la imagen ($source) en ${DateTime.now()}");
+                            throw Exception('Fallo al decodificar la imagen ($source) en ${DateTime.now()}');
                           }
                           imageBytes = img.encodeJpg(decodedImage, quality: 85);
 
@@ -778,10 +725,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           final uploadTask = ref.putData(imageBytes, SettableMetadata(contentType: 'image/$format'));
                           final snapshot = await uploadTask.whenComplete(() => print('Subida completada en ${DateTime.now()}'));
                           if (snapshot.state != TaskState.success) {
-                            throw Exception("Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}");
+                            throw Exception('Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}');
                           }
                           imageUrl = await ref.getDownloadURL();
-                          print("Imagen subida: $imageUrl ($source) en ${DateTime.now()}");
+                          print('Imagen subida: $imageUrl ($source) en ${DateTime.now()}');
                         }
 
                         final userId = _auth.currentUser!.uid;
@@ -813,22 +760,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           'phone': phone,
                         });
 
-                        print("Queja creada en ${DateTime.now()}");
+                        print('Queja creada en ${DateTime.now()}');
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Queja creada exitosamente')),
                         );
                         Navigator.pop(context);
                       } catch (e) {
-                        print("Error al crear queja: $e en ${DateTime.now()}");
-                        if (e.toString().contains('permission-denied') || e.toString().contains('unauthorized')) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('No tienes permisos para realizar esta acción.')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error al crear queja: $e')),
-                          );
-                        }
+                        print('Error al crear queja: $e en ${DateTime.now()}');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al crear queja: $e')),
+                        );
                       } finally {
                         setDialogState(() {
                           isLoading = false;
@@ -931,15 +872,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
-    if (user == null) {
-      print('Usuario no autenticado, redirigiendo a /login');
-      Navigator.pushReplacementNamed(context, '/login');
-      return const SizedBox.shrink(); // Evitar renderizado si no hay usuario
+    if (user == null || userRole == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Colors.green)),
+      );
     }
 
     return WillPopScope(
       onWillPop: () async {
-        Navigator.pushNamed(context, '/admin'); // Cambiado a /admin para regresar al Panel Administrativo
+        Navigator.pushNamed(context, '/admin');
         return false;
       },
       child: Scaffold(
@@ -950,11 +891,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () {
-              Navigator.pushNamed(context, '/admin'); // Cambiado a /admin
+              Navigator.pushNamed(context, '/admin');
             },
           ),
           actions: [
-            if (userRole == 'admin' || userRole == 'empresa') ...[
+            if (userRole == 'empresa' || userRole == 'autoridad') ...[
               IconButton(
                 icon: const Icon(Icons.add, color: Colors.white),
                 onPressed: _createComplaint,
@@ -966,11 +907,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 tooltip: _selectedComplaints.isNotEmpty ? 'Eliminar seleccionadas' : 'Eliminar todas',
               ),
             ],
-            if (userRole == 'loading') // Mostrar indicador mientras carga
-              const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
           ],
         ),
         body: Container(
@@ -1049,7 +985,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (userRole == 'admin' || userRole == 'empresa')
+                          if (userRole == 'empresa' || userRole == 'autoridad')
                             Checkbox(
                               value: _selectedComplaints.contains(docId),
                               onChanged: (value) {
@@ -1085,7 +1021,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                           onPressed: () => _viewDetails(docId, report),
                                           tooltip: 'Ver detalles',
                                         ),
-                                        if (userRole == 'admin' || userRole == 'empresa') ...[
+                                        if (userRole == 'empresa' || userRole == 'autoridad') ...[
                                           IconButton(
                                             icon: const Icon(Icons.edit, color: Colors.blue),
                                             onPressed: () => _editComplaint(docId, report),

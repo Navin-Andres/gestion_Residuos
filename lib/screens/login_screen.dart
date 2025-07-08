@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -20,40 +22,61 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
-    try {
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
-      print('UID: ${userCredential.user!.uid}');
-      print('Email: ${userCredential.user!.email}');
 
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .get();
-      final role = userDoc.data()?['role'] ?? 'usuario';
-      print('Rol desde Firestore: $role');
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      final user = userCredential.user!;
+      print('Inicio de sesión con email: UID=${user.uid}, Email=${user.email}');
+
+      final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final userDoc = await userDocRef.get();
+
+      String role;
+      if (!userDoc.exists) {
+        role = _selectedIndex == 1 ? 'empresa' : 'usuario';
+        await userDocRef.set({
+          'email': user.email,
+          'displayName': user.displayName ?? user.email?.split('@')[0],
+          'photoURL': user.photoURL,
+          'role': role,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        print('Usuario creado en Firestore: UID=${user.uid}, Rol=$role');
+      } else {
+        role = userDoc.data()?['role'] ?? 'usuario';
+        print('Rol desde Firestore: $role');
+      }
 
       if (_selectedIndex == 1) {
         if (role == 'autoridad' || role == 'empresa') {
+          print('Navegando a AdminPanelScreen');
           Navigator.pushReplacementNamed(context, '/admin');
         } else {
           setState(() {
-            _errorMessage = 'No tienes permisos de autoridad o empresa. Contacta al administrador para actualizar tu rol.';
+            _errorMessage = 'No tienes permisos de autoridad o empresa.';
           });
         }
       } else {
-        Navigator.pushReplacementNamed(context, '/home');
+        print('Navegando a HomeScreen');
+        if (!userDoc.exists && role == 'usuario') {
+          Navigator.pushReplacementNamed(context, '/profile_setup');
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
-        _errorMessage = e.message;
+        _errorMessage = _mapFirebaseAuthError(e.code);
       });
+      print('Error de autenticación: ${e.code}, ${e.message}');
     } catch (e) {
       setState(() {
         _errorMessage = 'Error inesperado: $e';
       });
+      print('Error inesperado: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -66,9 +89,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
     try {
-      // Iniciar sesión con Google
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         setState(() {
           _errorMessage = 'Inicio de sesión con Google cancelado.';
@@ -76,13 +99,13 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         return;
       }
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      final googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Verificar si el usuario es anónimo y vincular si es necesario
       final currentUser = FirebaseAuth.instance.currentUser;
       UserCredential userCredential;
       if (currentUser != null && currentUser.isAnonymous) {
@@ -95,18 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = userCredential.user!;
       print('Inicio de sesión con Google: UID=${user.uid}, Email=${user.email}, Nombre=${user.displayName}');
 
-      // Actualizar perfil de Firebase
       await user.updateDisplayName(user.displayName ?? user.email?.split('@')[0]);
       await user.updatePhotoURL(user.photoURL);
 
-      // Verificar o crear usuario en Firestore
       final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       final userDoc = await userDocRef.get();
       String role;
 
       if (!userDoc.exists) {
-        // Nuevo usuario: crear documento en Firestore con rol basado en selección
-        role = _selectedIndex == 1 ? 'empresa' : 'usuario'; // Asigna 'empresa' si es autoridad/empresa
+        role = _selectedIndex == 1 ? 'empresa' : 'usuario';
         await userDocRef.set({
           'email': user.email,
           'displayName': user.displayName ?? user.email?.split('@')[0],
@@ -120,17 +140,17 @@ class _LoginScreenState extends State<LoginScreen> {
         print('Rol de usuario existente: $role');
       }
 
-      // Navegación basada en rol y selección
       if (_selectedIndex == 1) {
         if (role == 'autoridad' || role == 'empresa') {
+          print('Navegando a AdminPanelScreen');
           Navigator.pushReplacementNamed(context, '/admin');
         } else {
           setState(() {
-            _errorMessage = 'No tienes permisos de autoridad o empresa. Contacta al administrador para actualizar tu rol.';
+            _errorMessage = 'No tienes permisos de autoridad o empresa.';
           });
         }
       } else {
-        // Solo usuarios con rol 'usuario' van a profile_setup si son nuevos
+        print('Navegando a HomeScreen o ProfileSetupScreen');
         if (!userDoc.exists && role == 'usuario') {
           Navigator.pushReplacementNamed(context, '/profile_setup');
         } else {
@@ -149,6 +169,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  String _mapFirebaseAuthError(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No se encontró un usuario con ese correo.';
+      case 'wrong-password':
+        return 'Contraseña incorrecta.';
+      case 'invalid-email':
+        return 'El correo electrónico no es válido.';
+      case 'user-disabled':
+        return 'La cuenta ha sido deshabilitada.';
+      default:
+        return 'Error de autenticación: $code';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -164,17 +199,17 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 48,
                   backgroundColor: Colors.white,
                   child: Icon(Icons.eco, color: Colors.green, size: 60),
                 ),
-                SizedBox(height: 24),
-                Text(
+                const SizedBox(height: 24),
+                const Text(
                   'Gestión de Residuos',
                   style: TextStyle(
                     fontSize: 28,
@@ -182,7 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.white,
                   ),
                 ),
-                SizedBox(height: 36),
+                const SizedBox(height: 36),
                 ToggleButtons(
                   isSelected: [_selectedIndex == 0, _selectedIndex == 1],
                   onPressed: (index) {
@@ -195,10 +230,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                   borderRadius: BorderRadius.circular(12),
                   selectedColor: Colors.white,
-                  fillColor: Colors.green[900],
-                  color: Colors.green[900],
-                  constraints: BoxConstraints(minHeight: 40, minWidth: 140),
-                  children: [
+                  fillColor: Colors.green.shade900,
+                  color: Colors.green.shade900,
+                  constraints: const BoxConstraints(minHeight: 40, minWidth: 140),
+                  children: const [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -217,12 +252,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 Card(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 8,
                   child: Padding(
-                    padding: EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
                         TextField(
@@ -236,49 +271,52 @@ class _LoginScreenState extends State<LoginScreen> {
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           keyboardType: TextInputType.emailAddress,
+                          enabled: !_isLoading,
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         TextField(
                           controller: _passwordController,
                           decoration: InputDecoration(
                             labelText: 'Contraseña',
-                            prefixIcon: Icon(Icons.lock, color: Colors.green),
+                            prefixIcon: const Icon(Icons.lock, color: Colors.green),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
+                          ),
                           obscureText: true,
+                          enabled: !_isLoading,
                         ),
-                        SizedBox(height: 24),
+                        const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: _isLoading ? null : _loginWithEmail,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[700],
-                            minimumSize: Size(double.infinity, 48),
+                            backgroundColor: Colors.green.shade700,
+                            minimumSize: const Size(double.infinity, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           child: _isLoading
-                              ? SizedBox(
+                              ? const SizedBox(
                                   width: 24,
                                   height: 24,
                                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                 )
-                              : Text('Iniciar Sesión', style: TextStyle(fontSize: 16)),
+                              : const Text('Iniciar Sesión', style: TextStyle(fontSize: 16, color: Colors.white)),
                         ),
                         if (_selectedIndex == 0) ...[
-                          SizedBox(height: 12),
+                          const SizedBox(height: 12),
                           ElevatedButton.icon(
                             onPressed: _isLoading ? null : _loginWithGoogle,
                             icon: Image.network(
                               'https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png',
                               height: 24,
                               width: 24,
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
                             ),
                             label: Text(
                               'Iniciar sesión con Google',
-                              style: TextStyle(fontSize: 16, color: Colors.green[900]),
+                              style: TextStyle(fontSize: 16, color: Colors.green.shade900),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white,
-                              minimumSize: Size(double.infinity, 48),
+                              minimumSize: const Size(double.infinity, 48),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               elevation: 4,
                             ),
@@ -286,8 +324,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                         if (_errorMessage != null)
                           Padding(
-                            padding: EdgeInsets.only(top: 8),
-                            child: Text(_errorMessage!, style: TextStyle(color: Colors.red[700])),
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(color: Colors.red.shade700),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                       ],
                     ),
