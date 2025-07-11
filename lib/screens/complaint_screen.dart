@@ -44,7 +44,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       setState(() {
         userRole = userDoc.data()?['role'] ?? 'usuario';
-        print('Rol del usuario cargado: $userRole');
+        print('Rol del usuario cargado: $userRole en ${DateTime.now()}');
       });
       if (userRole != 'usuario') {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -53,7 +53,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
-      print('Error al obtener el rol: $e');
+      print('Error al obtener el rol: $e en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al cargar permisos. Contacta al administrador.')),
       );
@@ -75,13 +75,20 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           }
         } else {
           final file = File(pickedFile.path);
-          if ((await isValidImageFile(file)).isValid) {
+          final validation = await isValidImageFile(file);
+          if (validation.isValid) {
+            if (validation.format == 'heic') {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Formato HEIC detectado. Se convertirá a JPEG.')),
+              );
+            }
             setState(() => selectedImage = file);
           } else {
-            throw Exception('Imagen inválida en móvil');
+            throw Exception('Imagen inválida en móvil: ${validation.error}');
           }
         }
       } catch (e) {
+        print('Error al seleccionar imagen: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al seleccionar imagen: $e')),
         );
@@ -90,6 +97,28 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
   }
 
   void _removeImage() => setState(() => selectedImage = null);
+
+  Future<void> _createNotification(String userId, String title, String role, Map<String, dynamic> complaintData) async {
+    try {
+      final notificationData = {
+        'userId': userId,
+        'title': title,
+        'timestamp': FieldValue.serverTimestamp(),
+        'role': role,
+        'read': false,
+        'complaintId': complaintData['complaintId'],
+        'description': complaintData['description'],
+        'address': complaintData['address'],
+        'neighborhood': complaintData['neighborhood'],
+        'recipient': complaintData['recipient'],
+        'imageUrl': complaintData['imageUrl'],
+      };
+      await FirebaseFirestore.instance.collection('notifications').add(notificationData);
+      print('Notificación creada para userId: $userId, complaintId: ${complaintData['complaintId']} en ${DateTime.now()}');
+    } catch (e) {
+      print('Error al crear notificación: $e en ${DateTime.now()}');
+    }
+  }
 
   Future<void> _submitComplaint() async {
     if (_formKey.currentState!.validate()) {
@@ -115,7 +144,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           imageUrl = await _uploadImage(user.uid, selectedImage);
         }
 
-        await FirebaseFirestore.instance.collection('complaints').add({
+        final complaintData = {
           'userId': user.uid,
           'description': _controllers['description']!.text,
           'address': _controllers['address']!.text,
@@ -127,13 +156,42 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           'fullName': fullName,
           'idNumber': idNumber,
           'phone': phone,
-        });
+        };
+
+        final complaintRef = await FirebaseFirestore.instance.collection('complaints').add(complaintData);
+        complaintData['complaintId'] = complaintRef.id;
+
+        // Notificación para el usuario
+        await _createNotification(
+          user.uid,
+          'Queja Enviada',
+          'usuario',
+          complaintData,
+        );
+
+        // Notificación para empresa o autoridad según el recipient
+        final recipient = _controllers['recipient']!.text;
+        final recipientDoc = await FirebaseFirestore.instance.collection('recipients').doc(recipient).get();
+        if (recipientDoc.exists) {
+          final recipientData = recipientDoc.data()!;
+          final recipientUserId = recipientData['userId'] as String?;
+          final recipientRole = recipientData['role'] as String?;
+          if (recipientUserId != null && recipientRole != null && (recipientRole == 'empresa' || recipientRole == 'autoridad')) {
+            await _createNotification(
+              recipientUserId,
+              'Nueva Queja Recibida',
+              recipientRole,
+              complaintData,
+            );
+          }
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Queja enviada exitosamente')),
         );
         Navigator.pop(context);
       } catch (e) {
+        print('Error al enviar queja: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al enviar queja: $e')),
         );
@@ -153,10 +211,10 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           .ref()
           .child('complaints/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg');
       final uploadTask = storageRef.putData(uploadBytes, SettableMetadata(contentType: 'image/jpeg'));
-      await uploadTask.whenComplete(() {});
+      await uploadTask.whenComplete(() => print('Subida completada en ${DateTime.now()}'));
       return await storageRef.getDownloadURL();
     } catch (e) {
-      print('Error al subir imagen: $e');
+      print('Error al subir imagen: $e en ${DateTime.now()}');
       throw Exception('Error al subir imagen: $e');
     }
   }

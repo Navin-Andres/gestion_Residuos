@@ -1,15 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_prueba2/image_validation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -66,6 +61,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  Future<void> _createNotification(String userId, String title, String message, String role) async {
+    try {
+      await _firestore.collection('notifications').add({
+        'userId': userId,
+        'title': title,
+        'message': message,
+        'timestamp': FieldValue.serverTimestamp(),
+        'role': role,
+      });
+      print('Notificación creada para userId: $userId en ${DateTime.now()}');
+    } catch (e) {
+      print('Error al crear notificación: $e en ${DateTime.now()}');
+    }
+  }
+
   Future<void> _deleteSelectedComplaints() async {
     if (userRole != 'empresa' && userRole != 'autoridad') return;
 
@@ -92,7 +102,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       for (final docId in _selectedComplaints) {
         final complaintDoc = await _firestore.collection('complaints').doc(docId).get();
-        final imageUrl = complaintDoc.data()?['imageUrl'] as String?;
+        final complaintData = complaintDoc.data();
+        final imageUrl = complaintData?['imageUrl'] as String?;
+        final complaintUserId = complaintData?['userId'] as String?;
         if (imageUrl != null && imageUrl.contains('firebasestorage.googleapis.com')) {
           try {
             final ref = _storage.refFromURL(imageUrl);
@@ -104,6 +116,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
         await _firestore.collection('complaints').doc(docId).delete();
         print('Queja eliminada: $docId en ${DateTime.now()}');
+        if (complaintUserId != null) {
+          await _createNotification(
+            complaintUserId,
+            'Queja Eliminada',
+            'Tu queja ha sido eliminada por una empresa o autoridad.',
+            'usuario',
+          );
+        }
       }
       setState(() {
         _selectedComplaints.clear();
@@ -145,7 +165,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       final snapshot = await _firestore.collection('complaints').get();
       for (final doc in snapshot.docs) {
-        final imageUrl = doc.data()['imageUrl'] as String?;
+        final complaintData = doc.data();
+        final imageUrl = complaintData['imageUrl'] as String?;
+        final complaintUserId = complaintData['userId'] as String?;
         if (imageUrl != null && imageUrl.contains('firebasestorage.googleapis.com')) {
           try {
             final ref = _storage.refFromURL(imageUrl);
@@ -157,6 +179,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
         await doc.reference.delete();
         print('Queja eliminada: ${doc.id} en ${DateTime.now()}');
+        if (complaintUserId != null) {
+          await _createNotification(
+            complaintUserId,
+            'Queja Eliminada',
+            'Tu queja ha sido eliminada por una empresa o autoridad.',
+            'usuario',
+          );
+        }
       }
       setState(() {
         _selectedComplaints.clear();
@@ -196,6 +226,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (confirm != true) return;
 
     try {
+      final complaintDoc = await _firestore.collection('complaints').doc(docId).get();
+      final complaintData = complaintDoc.data();
+      final complaintUserId = complaintData?['userId'] as String?;
       if (imageUrl != null && imageUrl.contains('firebasestorage.googleapis.com')) {
         try {
           final ref = _storage.refFromURL(imageUrl);
@@ -207,6 +240,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
       await _firestore.collection('complaints').doc(docId).delete();
       print('Queja eliminada: $docId en ${DateTime.now()}');
+      if (complaintUserId != null) {
+        await _createNotification(
+          complaintUserId,
+          'Queja Eliminada',
+          'Tu queja ha sido eliminada por una empresa o autoridad.',
+          'usuario',
+        );
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Queja eliminada exitosamente')),
       );
@@ -218,634 +259,124 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  Future<void> _editComplaint(String docId, Map<String, dynamic> currentData) async {
-    if (userRole != 'empresa' && userRole != 'autoridad') return;
-
-    final descriptionController = TextEditingController(text: currentData['description'] ?? '');
-    final addressController = TextEditingController(text: currentData['address'] ?? '');
-    final neighborhoodController = TextEditingController(text: currentData['neighborhood'] ?? '');
-    final recipientController = TextEditingController(text: currentData['recipient'] ?? '');
-    String? status = currentData['status'] ?? 'Pendiente';
-    dynamic selectedImage;
-    String? imageUrl = currentData['imageUrl'];
+  Future<void> _viewDetails(String docId, Map<String, dynamic> report) async {
+    final responseController = TextEditingController();
     bool isLoading = false;
-
-    Future<void> pickImage(ImageSource source) async {
-      final picker = ImagePicker();
-      try {
-        final pickedFile = await picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1920, imageQuality: 85);
-        if (pickedFile != null) {
-          if (kIsWeb) {
-            final bytes = await pickedFile.readAsBytes();
-            final validation = await isValidImageBytes(bytes);
-            if (validation.isValid) {
-              selectedImage = bytes;
-            } else {
-              throw Exception('Imagen inválida (web): ${validation.error}');
-            }
-          } else {
-            final file = File(pickedFile.path);
-            final validation = await isValidImageFile(file);
-            if (validation.isValid) {
-              if (validation.format == 'heic') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Formato HEIC detectado. Se convertirá a JPEG.')),
-                );
-              }
-              selectedImage = file;
-            } else {
-              throw Exception('Imagen inválida (móvil): ${validation.error}');
-            }
-          }
-        }
-      } catch (e) {
-        print('Error al seleccionar imagen: $e en ${DateTime.now()}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al seleccionar imagen: $e')),
-        );
-      }
-    }
-
-    void removeImage() {
-      selectedImage = null;
-      imageUrl = null;
-    }
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Editar Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+          title: const Text('Detalles de la Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder()),
-                  maxLines: 4,
-                  enabled: !isLoading,
-                ),
+                _buildDetailRow('Nombre Completo', report['fullName'] ?? 'Sin nombre'),
+                _buildDetailRow('Cédula', report['idNumber'] ?? 'No disponible'),
+                _buildDetailRow('Teléfono', report['phone'] ?? 'No disponible'),
+                _buildDetailRow('Descripción', report['description'] ?? 'Sin descripción'),
+                _buildDetailRow('Dirección', report['address'] ?? 'Sin dirección'),
+                _buildDetailRow('Barrio', report['neighborhood'] ?? 'Sin barrio'),
+                _buildDetailRow('Estado', report['status'] ?? 'Pendiente'),
+                _buildDetailRow('Destinatario', report['recipient'] ?? 'No especificado'),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: addressController,
-                  decoration: const InputDecoration(labelText: 'Dirección', border: OutlineInputBorder()),
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: neighborhoodController,
-                  decoration: const InputDecoration(labelText: 'Barrio', border: OutlineInputBorder()),
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: recipientController.text.isNotEmpty ? recipientController.text : null,
-                  hint: const Text('Selecciona un destinatario'),
-                  items: const [
-                    DropdownMenuItem(value: 'Interaseo Valledupar', child: Text('Interaseo Valledupar')),
-                    DropdownMenuItem(value: 'Autoridad Ambiental', child: Text('Autoridad Ambiental')),
-                    DropdownMenuItem(value: 'Alcaldía de Valledupar', child: Text('Alcaldía de Valledupar')),
-                  ],
-                  onChanged: isLoading ? null : (String? newValue) {
-                    setDialogState(() {
-                      if (newValue != null) {
-                        recipientController.text = newValue;
-                      }
-                    });
-                  },
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: status,
-                  hint: const Text('Selecciona un estado'),
-                  items: const [
-                    DropdownMenuItem(value: 'Pendiente', child: Text('Pendiente')),
-                    DropdownMenuItem(value: 'En Proceso', child: Text('En Proceso')),
-                    DropdownMenuItem(value: 'Resuelto', child: Text('Resuelto')),
-                  ],
-                  onChanged: isLoading ? null : (String? newValue) {
-                    setDialogState(() {
-                      if (newValue != null) {
-                        status = newValue;
-                      }
-                    });
-                  },
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: isLoading ? null : () => pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Tomar foto'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: isLoading ? null : () => pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo),
-                      label: const Text('Subir imagen'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                    ),
-                  ],
-                ),
-                if (selectedImage != null || imageUrl != null) ...[
-                  const SizedBox(height: 10),
-                  selectedImage != null
-                      ? kIsWeb
-                          ? Image.memory(selectedImage as Uint8List, height: 100, fit: BoxFit.cover)
-                          : Image.file(selectedImage as File, height: 100, fit: BoxFit.cover)
-                      : CachedNetworkImage(
-                          imageUrl: imageUrl!,
-                          height: 100,
+                report['imageUrl'] != null && (report['imageUrl'] as String).isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: CachedNetworkImage(
+                          imageUrl: report['imageUrl'],
+                          height: 200,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => const CircularProgressIndicator(),
-                          errorWidget: (context, url, error) => const Icon(Icons.error),
+                          placeholder: (context, url) => Container(
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: const Center(child: CircularProgressIndicator(color: Colors.green)),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: const Center(child: Icon(Icons.error, color: Colors.red)),
+                          ),
                         ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: isLoading ? null : () {
-                      setDialogState(removeImage);
-                    },
+                      )
+                    : Container(
+                        height: 200,
+                        color: Colors.grey[300],
+                        child: const Center(
+                          child: Text(
+                            'No se proporcionó ninguna imagen',
+                            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                          ),
+                        ),
+                      ),
+                const SizedBox(height: 10),
+                if (userRole == 'empresa' || userRole == 'autoridad') ...[
+                  TextField(
+                    controller: responseController,
+                    decoration: const InputDecoration(
+                      labelText: 'Responder a la queja',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                    enabled: !isLoading,
                   ),
                 ],
-                if (isLoading) const CircularProgressIndicator(),
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: isLoading ? null : () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.green)),
+              child: const Text('Cerrar', style: TextStyle(color: Colors.green)),
             ),
-            TextButton(
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      if (descriptionController.text.isEmpty || descriptionController.text.length < 10) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('La descripción debe tener al menos 10 caracteres')),
-                        );
-                        return;
-                      }
-                      if (addressController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, ingresa una dirección')),
-                        );
-                        return;
-                      }
-                      if (neighborhoodController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, ingresa un barrio')),
-                        );
-                        return;
-                      }
-                      if (recipientController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, selecciona un destinatario')),
-                        );
-                        return;
-                      }
-
-                      setDialogState(() {
-                        isLoading = true;
-                      });
-
-                      try {
-                        String? newImageUrl = imageUrl;
-                        if (selectedImage != null) {
-                          Uint8List imageBytes;
-                          String source = kIsWeb ? 'web' : 'móvil';
-                          String format = 'jpeg';
-                          String extension = 'jpg';
-                          if (selectedImage is File) {
-                            final validation = await isValidImageFile(selectedImage);
-                            if (!validation.isValid) {
-                              throw Exception('Archivo de imagen inválido ($source): ${validation.error}');
-                            }
-                            imageBytes = await selectedImage.readAsBytes();
-                          } else {
-                            final validation = await isValidImageBytes(selectedImage);
-                            if (!validation.isValid) {
-                              throw Exception('Datos de imagen inválidos ($source): ${validation.error}');
-                            }
-                            imageBytes = selectedImage;
-                          }
-
-                          final decodedImage = img.decodeImage(imageBytes);
-                          if (decodedImage == null) {
-                            throw Exception('Fallo al decodificar la imagen ($source) en ${DateTime.now()}');
-                          }
-                          imageBytes = img.encodeJpg(decodedImage, quality: 85);
-
-                          if (imageUrl != null && imageUrl!.contains('firebasestorage.googleapis.com')) {
-                            try {
-                              final ref = _storage.refFromURL(imageUrl!);
-                              await ref.delete();
-                              print('Imagen antigua eliminada: $imageUrl en ${DateTime.now()}');
-                            } catch (e) {
-                              print('Error al eliminar imagen antigua: $e en ${DateTime.now()}');
-                            }
-                          }
-
-                          final ref = _storage
-                              .ref()
-                              .child('complaints/${currentData['userId']}/${DateTime.now().millisecondsSinceEpoch}.$extension');
-                          final uploadTask = ref.putData(imageBytes, SettableMetadata(contentType: 'image/$format'));
-                          final snapshot = await uploadTask.whenComplete(() => print('Subida completada en ${DateTime.now()}'));
-                          if (snapshot.state != TaskState.success) {
-                            throw Exception('Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}');
-                          }
-                          newImageUrl = await ref.getDownloadURL();
-                          print('Imagen subida: $newImageUrl ($source) en ${DateTime.now()}');
-                        }
-
-                        await _firestore.collection('complaints').doc(docId).update({
-                          'description': descriptionController.text,
-                          'address': addressController.text,
-                          'neighborhood': neighborhoodController.text,
-                          'recipient': recipientController.text,
-                          'status': status,
-                          'imageUrl': newImageUrl,
-                          'updatedAt': FieldValue.serverTimestamp(),
-                        });
-
-                        print('Queja actualizada: $docId en ${DateTime.now()}');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Queja actualizada exitosamente')),
-                        );
-                        Navigator.pop(context);
-                      } catch (e) {
-                        print('Error al actualizar queja: $e en ${DateTime.now()}');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error al actualizar queja: $e')),
-                        );
-                      } finally {
-                        setDialogState(() {
-                          isLoading = false;
-                        });
-                      }
-                    },
-              child: const Text('Guardar', style: TextStyle(color: Colors.green)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    descriptionController.dispose();
-    addressController.dispose();
-    neighborhoodController.dispose();
-    recipientController.dispose();
-  }
-
-  Future<void> _createComplaint() async {
-    if (_auth.currentUser == null) {
-      Navigator.pushReplacementNamed(context, '/login');
-      return;
-    }
-    if (userRole != 'empresa' && userRole != 'autoridad') return;
-
-    final descriptionController = TextEditingController();
-    final addressController = TextEditingController();
-    final neighborhoodController = TextEditingController();
-    final recipientController = TextEditingController();
-    String? status = 'Pendiente';
-    dynamic selectedImage;
-    bool isLoading = false;
-
-    Future<void> pickImage(ImageSource source) async {
-      final picker = ImagePicker();
-      try {
-        final pickedFile = await picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1920, imageQuality: 85);
-        if (pickedFile != null) {
-          if (kIsWeb) {
-            final bytes = await pickedFile.readAsBytes();
-            final validation = await isValidImageBytes(bytes);
-            if (validation.isValid) {
-              selectedImage = bytes;
-            } else {
-              throw Exception('Imagen inválida (web): ${validation.error}');
-            }
-          } else {
-            final file = File(pickedFile.path);
-            final validation = await isValidImageFile(file);
-            if (validation.isValid) {
-              if (validation.format == 'heic') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Formato HEIC detectado. Se convertirá a JPEG.')),
-                );
-              }
-              selectedImage = file;
-            } else {
-              throw Exception('Imagen inválida (móvil): ${validation.error}');
-            }
-          }
-        }
-      } catch (e) {
-        print('Error al seleccionar imagen: $e en ${DateTime.now()}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al seleccionar imagen: $e')),
-        );
-      }
-    }
-
-    void removeImage() {
-      selectedImage = null;
-    }
-
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Crear Nueva Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder()),
-                  maxLines: 4,
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: addressController,
-                  decoration: const InputDecoration(labelText: 'Dirección', border: OutlineInputBorder()),
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: neighborhoodController,
-                  decoration: const InputDecoration(labelText: 'Barrio', border: OutlineInputBorder()),
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: recipientController.text.isNotEmpty ? recipientController.text : null,
-                  hint: const Text('Selecciona un destinatario'),
-                  items: const [
-                    DropdownMenuItem(value: 'Interaseo Valledupar', child: Text('Interaseo Valledupar')),
-                    DropdownMenuItem(value: 'Autoridad Ambiental', child: Text('Autoridad Ambiental')),
-                    DropdownMenuItem(value: 'Alcaldía de Valledupar', child: Text('Alcaldía de Valledupar')),
-                  ],
-                  onChanged: isLoading ? null : (String? newValue) {
-                    setDialogState(() {
-                      if (newValue != null) {
-                        recipientController.text = newValue;
-                      }
-                    });
-                  },
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: status,
-                  hint: const Text('Selecciona un estado'),
-                  items: const [
-                    DropdownMenuItem(value: 'Pendiente', child: Text('Pendiente')),
-                    DropdownMenuItem(value: 'En Proceso', child: Text('En Proceso')),
-                    DropdownMenuItem(value: 'Resuelto', child: Text('Resuelto')),
-                  ],
-                  onChanged: isLoading ? null : (String? newValue) {
-                    setDialogState(() {
-                      if (newValue != null) {
-                        status = newValue;
-                      }
-                    });
-                  },
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: isLoading ? null : () => pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Tomar foto'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: isLoading ? null : () => pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo),
-                      label: const Text('Subir imagen'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                    ),
-                  ],
-                ),
-                if (selectedImage != null) ...[
-                  const SizedBox(height: 10),
-                  kIsWeb
-                      ? Image.memory(selectedImage as Uint8List, height: 100, fit: BoxFit.cover)
-                      : Image.file(selectedImage as File, height: 100, fit: BoxFit.cover),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: isLoading ? null : () {
-                      setDialogState(removeImage);
-                    },
-                  ),
-                ],
-                if (isLoading) const CircularProgressIndicator(),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isLoading ? null : () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.green)),
-            ),
-            TextButton(
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      if (descriptionController.text.isEmpty || descriptionController.text.length < 10) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('La descripción debe tener al menos 10 caracteres')),
-                        );
-                        return;
-                      }
-                      if (addressController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, ingresa una dirección')),
-                        );
-                        return;
-                      }
-                      if (neighborhoodController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, ingresa un barrio')),
-                        );
-                        return;
-                      }
-                      if (recipientController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Por favor, selecciona un destinatario')),
-                        );
-                        return;
-                      }
-
-                      setDialogState(() {
-                        isLoading = true;
-                      });
-
-                      try {
-                        String? imageUrl;
-                        if (selectedImage != null) {
-                          Uint8List imageBytes;
-                          String source = kIsWeb ? 'web' : 'móvil';
-                          String format = 'jpeg';
-                          String extension = 'jpg';
-                          if (selectedImage is File) {
-                            final validation = await isValidImageFile(selectedImage);
-                            if (!validation.isValid) {
-                              throw Exception('Archivo de imagen inválido ($source): ${validation.error}');
-                            }
-                            imageBytes = await selectedImage.readAsBytes();
-                          } else {
-                            final validation = await isValidImageBytes(selectedImage);
-                            if (!validation.isValid) {
-                              throw Exception('Datos de imagen inválidos ($source): ${validation.error}');
-                            }
-                            imageBytes = selectedImage;
-                          }
-
-                          final decodedImage = img.decodeImage(imageBytes);
-                          if (decodedImage == null) {
-                            throw Exception('Fallo al decodificar la imagen ($source) en ${DateTime.now()}');
-                          }
-                          imageBytes = img.encodeJpg(decodedImage, quality: 85);
-
-                          final ref = _storage
-                              .ref()
-                              .child('complaints/${_auth.currentUser!.uid}/${DateTime.now().millisecondsSinceEpoch}.$extension');
-                          final uploadTask = ref.putData(imageBytes, SettableMetadata(contentType: 'image/$format'));
-                          final snapshot = await uploadTask.whenComplete(() => print('Subida completada en ${DateTime.now()}'));
-                          if (snapshot.state != TaskState.success) {
-                            throw Exception('Fallo en la subida: ${snapshot.state} ($source) en ${DateTime.now()}');
-                          }
-                          imageUrl = await ref.getDownloadURL();
-                          print('Imagen subida: $imageUrl ($source) en ${DateTime.now()}');
-                        }
-
-                        final userId = _auth.currentUser!.uid;
-                        final userDoc = await _firestore.collection('users').doc(userId).get();
-                        final userData = userDoc.data() ?? {};
-                        final fullName = userData['displayName'] ?? 'Sin nombre';
-                        final idNumber = userData['idNumber'] ?? 'No disponible';
-                        final phone = userData['phone'] ?? 'No disponible';
-
-                        if (fullName == 'Sin nombre' || idNumber == 'No disponible' || phone == 'No disponible') {
+            if (userRole == 'empresa' || userRole == 'autoridad')
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        if (responseController.text.isEmpty || responseController.text.length < 5) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Por favor, completa tu perfil con nombre, cédula y teléfono.')),
+                            const SnackBar(content: Text('La respuesta debe tener al menos 5 caracteres')),
                           );
-                          Navigator.pushReplacementNamed(context, '/profile_setup');
                           return;
                         }
 
-                        await _firestore.collection('complaints').add({
-                          'userId': userId,
-                          'description': descriptionController.text,
-                          'address': addressController.text,
-                          'neighborhood': neighborhoodController.text,
-                          'recipient': recipientController.text,
-                          'status': status,
-                          'timestamp': FieldValue.serverTimestamp(),
-                          'imageUrl': imageUrl,
-                          'fullName': fullName,
-                          'idNumber': idNumber,
-                          'phone': phone,
+                        setDialogState(() {
+                          isLoading = true;
                         });
 
-                        print('Queja creada en ${DateTime.now()}');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Queja creada exitosamente')),
-                        );
-                        Navigator.pop(context);
-                      } catch (e) {
-                        print('Error al crear queja: $e en ${DateTime.now()}');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error al crear queja: $e')),
-                        );
-                      } finally {
-                        setDialogState(() {
-                          isLoading = false;
-                        });
-                      }
-                    },
-              child: const Text('Crear', style: TextStyle(color: Colors.green)),
-            ),
+                        try {
+                          await _createNotification(
+                            report['userId'],
+                            'Respuesta a tu Queja',
+                            responseController.text,
+                            'usuario',
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Respuesta enviada exitosamente')),
+                          );
+                          Navigator.pop(context);
+                        } catch (e) {
+                          print('Error al enviar respuesta: $e en ${DateTime.now()}');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error al enviar respuesta: $e')),
+                          );
+                        } finally {
+                          setDialogState(() {
+                            isLoading = false;
+                          });
+                        }
+                      },
+                child: const Text('Enviar Respuesta', style: TextStyle(color: Colors.green)),
+              ),
           ],
         ),
       ),
     );
 
-    descriptionController.dispose();
-    addressController.dispose();
-    neighborhoodController.dispose();
-    recipientController.dispose();
-  }
-
-  Future<void> _viewDetails(String docId, Map<String, dynamic> report) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Detalles de la Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow('Nombre Completo', report['fullName'] ?? 'Sin nombre'),
-              _buildDetailRow('Cédula', report['idNumber'] ?? 'No disponible'),
-              _buildDetailRow('Teléfono', report['phone'] ?? 'No disponible'),
-              _buildDetailRow('Descripción', report['description'] ?? 'Sin descripción'),
-              _buildDetailRow('Dirección', report['address'] ?? 'Sin dirección'),
-              _buildDetailRow('Barrio', report['neighborhood'] ?? 'Sin barrio'),
-              const SizedBox(height: 10),
-              report['imageUrl'] != null && (report['imageUrl'] as String).isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: CachedNetworkImage(
-                        imageUrl: report['imageUrl'],
-                        height: 200,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          height: 200,
-                          color: Colors.grey[300],
-                          child: const Center(child: CircularProgressIndicator(color: Colors.green)),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          height: 200,
-                          color: Colors.grey[300],
-                          child: const Center(child: Icon(Icons.error, color: Colors.red)),
-                        ),
-                      ),
-                    )
-                  : Container(
-                      height: 200,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Text(
-                          'No se proporcionó ninguna imagen',
-                          style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                        ),
-                      ),
-                    ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar', style: TextStyle(color: Colors.green)),
-          ),
-        ],
-      ),
-    );
+    responseController.dispose();
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -896,11 +427,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           actions: [
             if (userRole == 'empresa' || userRole == 'autoridad') ...[
-              IconButton(
-                icon: const Icon(Icons.add, color: Colors.white),
-                onPressed: _createComplaint,
-                tooltip: 'Crear nueva queja',
-              ),
               IconButton(
                 icon: const Icon(Icons.delete_sweep, color: Colors.white),
                 onPressed: _selectedComplaints.isNotEmpty ? _deleteSelectedComplaints : _deleteAllComplaints,
@@ -1021,18 +547,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                           onPressed: () => _viewDetails(docId, report),
                                           tooltip: 'Ver detalles',
                                         ),
-                                        if (userRole == 'empresa' || userRole == 'autoridad') ...[
-                                          IconButton(
-                                            icon: const Icon(Icons.edit, color: Colors.blue),
-                                            onPressed: () => _editComplaint(docId, report),
-                                            tooltip: 'Editar queja',
-                                          ),
+                                        if (userRole == 'empresa' || userRole == 'autoridad')
                                           IconButton(
                                             icon: const Icon(Icons.delete, color: Colors.red),
                                             onPressed: () => _deleteComplaint(docId, imageUrl),
                                             tooltip: 'Eliminar queja',
                                           ),
-                                        ],
                                       ],
                                     ),
                                   ],

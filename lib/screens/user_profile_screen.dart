@@ -121,7 +121,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
                         const Text(
                           'Notificaciones',
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

@@ -1,6 +1,7 @@
 import 'package:firebase_prueba2/screens/admin_panel_screen.dart';
 import 'package:firebase_prueba2/screens/complaint_screen.dart';
 import 'package:firebase_prueba2/screens/educational_section_screen.dart' show EducationalSectionScreen;
+import 'package:firebase_prueba2/screens/inbox_screen.dart';
 import 'package:firebase_prueba2/screens/map_screen.dart';
 import 'package:firebase_prueba2/screens/profile_septup_screen.dart';
 import 'package:firebase_prueba2/screens/reports_screen.dart';
@@ -8,11 +9,10 @@ import 'package:firebase_prueba2/screens/user_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_prueba2/screens/home_screen.dart';
 import 'package:firebase_prueba2/screens/login_screen.dart';
 import 'firebase_options.dart';
-import 'package:flutter/scheduler.dart' hide HomeScreen;
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,9 +20,12 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    // Configurar emuladores si es necesario
+    // FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
+    // FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     runApp(const MyApp());
   } catch (e) {
-    print('Error inicializando Firebase: $e');
+    print('Error inicializando Firebase: $e en ${DateTime.now()}');
     runApp(const MaterialApp(home: Scaffold(body: Center(child: Text('Error al iniciar la app')))));
   }
 }
@@ -38,15 +41,16 @@ class MyApp extends StatelessWidget {
       home: const AuthCheck(),
       debugShowCheckedModeBanner: false,
       routes: {
-        '/home': (context) => HomeScreen(),
-        '/login': (context) => LoginScreen(), // Quité const
-        '/map': (context) => MapScreen(), // Quité const
+        '/home': (context) => const HomeScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/map': (context) => MapScreen(),
         '/complaint': (context) => const ComplaintScreen(),
-        '/educational': (context) => EducationalSectionScreen(), // Quité const
+        '/educational': (context) => EducationalSectionScreen(),
         '/profile': (context) => const UserProfileScreen(),
         '/profile_setup': (context) => const ProfileSetupScreen(),
         '/admin': (context) => const AdminPanelScreen(),
         '/reportes': (context) => const ReportsScreen(),
+        '/inbox': (context) => const InboxScreen(),
       },
     );
   }
@@ -55,25 +59,59 @@ class MyApp extends StatelessWidget {
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
 
+  Future<String> _getInitialRoute() async {
+    final user = FirebaseAuth.instance.currentUser;
+    print('Verificando estado de autenticación en ${DateTime.now()}');
+    if (user == null) {
+      print('No hay usuario autenticado, redirigiendo a /login');
+      return '/login';
+    }
+    try {
+      print('Usuario autenticado: UID=${user.uid}, Email=${user.email}');
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final role = userDoc.data()?['role'] ?? 'usuario';
+      print('Rol obtenido: $role para UID=${user.uid} en ${DateTime.now()}');
+      if (role == 'empresa' || role == 'autoridad') {
+        return '/admin';
+      } else if (!userDoc.exists) {
+        return '/profile_setup';
+      } else {
+        return '/home';
+      }
+    } catch (e) {
+      print('Error al obtener rol: $e en ${DateTime.now()}');
+      return '/login';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+    return FutureBuilder<String>(
+      future: _getInitialRoute(),
       builder: (context, snapshot) {
-        print('Estado de conexión: ${snapshot.connectionState}');
-        print('Usuario autenticado: ${snapshot.hasData}');
-        print('Usuario UID: ${snapshot.data?.uid}');
+        print('Estado de conexión: ${snapshot.connectionState} en ${DateTime.now()}');
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator(color: Colors.green)),
           );
         }
-        if (snapshot.hasData && snapshot.data!.uid != null) {
-          print('Redirigiendo a HomeScreen');
-          return HomeScreen();
+        if (snapshot.hasError) {
+          print('Error al determinar ruta inicial: ${snapshot.error} en ${DateTime.now()}');
+          return const LoginScreen();
         }
-        print('Redirigiendo a LoginScreen');
-        return LoginScreen(); // Quité const
+        final initialRoute = snapshot.data ?? '/login';
+        print('Ruta inicial determinada: $initialRoute en ${DateTime.now()}');
+        switch (initialRoute) {
+          case '/admin':
+            return const AdminPanelScreen();
+          case '/profile_setup':
+            return const ProfileSetupScreen();
+          case '/home':
+            return const HomeScreen();
+          case '/login':
+          default:
+            return const LoginScreen();
+        }
       },
     );
   }
