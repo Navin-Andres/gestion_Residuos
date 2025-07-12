@@ -108,6 +108,12 @@ class AdminPanelScreen extends StatelessWidget {
                 label: 'Rutas',
                 route: '/rutas',
               ),
+              _buildGridButton(
+                context,
+                icon: Icons.add_location_alt,
+                label: 'Agregar Contenedor',
+                route: '/agregarContenedor',
+              ),
             ],
           ),
         ),

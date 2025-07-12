@@ -1,187 +1,166 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/container.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_webservice/places.dart';
+import 'package:http/http.dart' as http;
+
+const String googleApiKey = 'AIzaSyCy3zRVuZkc4Mv6stnC7lPptX1tniXjxiw';
 
 class ContainerMapScreen extends StatefulWidget {
+  const ContainerMapScreen({super.key});
   @override
   _ContainerMapScreenState createState() => _ContainerMapScreenState();
 }
 
 class _ContainerMapScreenState extends State<ContainerMapScreen> {
-  List<ContainerModel> _containers = [];
-  bool _isLoading = true;
-  String? _errorMessage;
+  late GoogleMapController _mapController;
+  final TextEditingController _searchController = TextEditingController();
+  final List<Prediction> _suggestions = [];
+  final Set<Marker> _markers = {};
+  final places = GoogleMapsPlaces(apiKey: googleApiKey);
 
   @override
   void initState() {
     super.initState();
-    _fetchContainers();
+    _loadContainerMarkers();
   }
 
-  Future<void> _fetchContainers() async {
-    try {
-      print('Obteniendo contenedores de Firestore...');
-      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('containers').get();
-      final containers = snapshot.docs
-          .map((doc) => ContainerModel.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
-          .toList();
-      print('Contenedores obtenidos: ${containers.length}');
-      containers.forEach((c) {
-        print('Contenedor ${c.id}: Estado=${c.status}, Lat=${c.location.latitude}, Lon=${c.location.longitude}');
-      });
+  void _onSearchChanged(String value) async {
+    if (value.isEmpty) {
+      setState(() => _suggestions.clear());
+      return;
+    }
+    final res = await places.autocomplete(
+      value,
+      components: [Component(Component.country, "co")],
+      language: 'es',
+    );
+    if (res.isOkay) {
       setState(() {
-        _containers = containers;
-        _isLoading = false;
+        _suggestions
+          ..clear()
+          ..addAll(res.predictions);
       });
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error al cargar contenedores: $e';
-        _isLoading = false;
-      });
-      print('Error al cargar contenedores: $e');
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Lleno':
-        return Colors.red;
-      case 'Vacío':
-        return Colors.green;
-      case 'En mantenimiento':
-        return Colors.orange;
-      default:
-        return Colors.grey;
+  Future<void> _selectSuggestion(Prediction p) async {
+    final res = await places.getDetailsByPlaceId(p.placeId!);
+    if (res.isOkay) {
+      final loc = res.result.geometry!.location;
+      final pos = LatLng(loc.lat, loc.lng);
+      setState(() {
+        // No limpiamos los markers, solo agregamos el nuevo temporal de búsqueda
+        _markers.add(
+          Marker(
+            markerId: MarkerId(p.placeId!),
+            position: pos,
+            infoWindow: InfoWindow(title: res.result.name),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          ),
+        );
+        _suggestions.clear();
+        _searchController.text = p.description!;
+      });
+      _mapController.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
     }
   }
+
+  Future<void> _loadContainerMarkers() async {
+  final snapshot = await FirebaseFirestore.instance.collection('contenedores').get();
+  for (var doc in snapshot.docs) {
+    final data = doc.data();
+    final lat = data['lat'] ?? data['latitud'];
+final lng = data['lng'] ?? data['longitud'];
+final address = data['address'] ?? data['direccion'];
+
+    if (lat != null && lng != null) {
+      _markers.add(
+        Marker(
+          markerId: MarkerId(doc.id),
+          position: LatLng(lat, lng),
+          infoWindow: InfoWindow(title: address ?? 'Contenedor'),
+        ),
+      );
+    }
+  }
+  setState(() {}); // Actualiza el mapa
+}
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Mapa de Contenedores'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _fetchContainers,
-            tooltip: 'Recargar contenedores',
+        title: const Text('Mapa de Contenedores'),
+        backgroundColor: Colors.green[700],
+      ),
+      body: Stack(
+        children: [
+          GoogleMap(
+            onMapCreated: (c) => _mapController = c,
+            initialCameraPosition: const CameraPosition(
+              target: LatLng(10.4631, -73.2532),
+              zoom: 13,
+            ),
+            markers: _markers,
+            myLocationEnabled: true,
+          ),
+          Positioned(
+            top: 10,
+            left: 15,
+            right: 15,
+            child: Column(
+              children: [
+                Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar dirección...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _suggestions.clear());
+                              },
+                            ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                    ),
+                  ),
+                ),
+                if (_suggestions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    ),
+                    child: ListView.builder(
+                      itemCount: _suggestions.length,
+                      shrinkWrap: true,
+                      itemBuilder: (_, i) {
+                        final p = _suggestions[i];
+                        return ListTile(
+                          title: Text(p.description!),
+                          onTap: () => _selectSuggestion(p),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(child: Text(_errorMessage!, style: TextStyle(color: Colors.red)))
-              : Column(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(8.0),
-                      color: Colors.grey[200],
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildLegendItem('Lleno', Colors.red),
-                          _buildLegendItem('Vacío', Colors.green),
-                          _buildLegendItem('En mantenimiento', Colors.orange),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: FlutterMap(
-                        options: MapOptions(
-                          initialCenter: LatLng(10.46314, -73.25322), // Valledupar
-                          initialZoom: 13.0,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            subdomains: ['a', 'b', 'c'],
-                            additionalOptions: {
-                              'attribution': '© OpenStreetMap contributors',
-                            },
-                          ),
-                          MarkerLayer(
-                            markers: _containers.map((container) {
-                              print('Añadiendo marcador para contenedor ${container.id} en (${container.location.latitude}, ${container.location.longitude})');
-                              return Marker(
-                                point: container.location,
-                                width: 40,
-                                height: 40,
-                                child: GestureDetector(
-                                  onTap: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: Text('Contenedor ${container.id}'),
-                                        content: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text('Estado: ${container.status}'),
-                                            SizedBox(height: 10),
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                _updateContainerStatus(container.id);
-                                              },
-                                              child: Text('Cambiar Estado'),
-                                            ),
-                                          ],
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context),
-                                            child: Text('Cerrar'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                  child: Icon(
-                                    Icons.location_pin,
-                                    color: _getStatusColor(container.status),
-                                    size: 40,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
     );
-  }
-
-  Widget _buildLegendItem(String status, Color color) {
-    return Row(
-      children: [
-        Container(width: 15, height: 15, color: color),
-        SizedBox(width: 5),
-        Text(status),
-      ],
-    );
-  }
-
-  Future<void> _updateContainerStatus(String containerId) async {
-    final newStatus = _containers.firstWhere((c) => c.id == containerId).status == 'Lleno'
-        ? 'Vacío'
-        : 'Lleno';
-    try {
-      await FirebaseFirestore.instance
-          .collection('containers')
-          .doc(containerId)
-          .update({'status': newStatus});
-      _fetchContainers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Estado actualizado a $newStatus')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar estado: $e')),
-      );
-      print('Error al actualizar estado: $e');
-    }
   }
 }

@@ -1,5 +1,7 @@
+import 'package:firebase_prueba2/screens/Agregar_contenedor.screen.dart';
 import 'package:firebase_prueba2/screens/admin_panel_screen.dart';
 import 'package:firebase_prueba2/screens/complaint_screen.dart';
+import 'package:firebase_prueba2/screens/container_map_screen.dart';
 import 'package:firebase_prueba2/screens/educational_section_screen.dart' show EducationalSectionScreen;
 import 'package:firebase_prueba2/screens/inbox_screen.dart';
 import 'package:firebase_prueba2/screens/map_screen.dart';
@@ -43,7 +45,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
-        '/map': (context) => MapScreen(),
+        '/map': (context) =>  ContainerMapScreen(),
         '/complaint': (context) => const ComplaintScreen(),
         '/educational': (context) => EducationalSectionScreen(),
         '/profile': (context) => const UserProfileScreen(),
@@ -51,6 +53,7 @@ class MyApp extends StatelessWidget {
         '/admin': (context) => const AdminPanelScreen(),
         '/reportes': (context) => const ReportsScreen(),
         '/inbox': (context) => const InboxScreen(),
+        '/agregarContenedor': (context) => AgregarContenedorScreen(),
       },
     );
   }

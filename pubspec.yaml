@@ -39,9 +39,8 @@ dependencies:
   geolocator: ^10.1.0        # Para obtener la ubicación
   image_picker: ^1.0.7  
   google_sign_in: ^6.1.5
-  http: ^1.2.1
-  flutter_map: ^7.0.2  # Para el mapa interactivo
-  latlong2: ^0.9.1
+  http: ^0.13.6
+  #flutter_map: ^7.0.2  # Para el mapa interactivo
   geocoding: ^2.0.0   
   google_maps_flutter_web: ^0.5.0+1  # Añade esta línea para soporte web
   image_picker_web: ^3.0.1
@@ -50,6 +49,12 @@ dependencies:
   image: ^4.0.17
   shared_preferences: ^2.0.0
   logger: ^2.4.0
+  google_maps_webservice: ^0.0.19
+  
+  
+  
+
+
   
   
 
@@ -83,8 +88,7 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
+  #assets:
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
