@@ -1,9 +1,8 @@
-import 'dart:convert';
+import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_webservice/places.dart';
-import 'package:http/http.dart' as http;
 
 const String googleApiKey = 'AIzaSyCy3zRVuZkc4Mv6stnC7lPptX1tniXjxiw';
 
@@ -15,169 +14,259 @@ class AgregarContenedorScreen extends StatefulWidget {
 
 class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
   final TextEditingController _direccionController = TextEditingController();
-  final TextEditingController _descripcionController = TextEditingController();
-  late GoogleMapController _mapController;
+  String? _estadoContenedor;
+  GoogleMapController? _mapController;
   final GoogleMapsPlaces _places = GoogleMapsPlaces(apiKey: googleApiKey);
   final List<Prediction> _suggestions = [];
   final Set<Marker> _markers = {};
   LatLng _posicionInicial = const LatLng(10.4631, -73.2532);
   BitmapDescriptor? _containerIcon;
+  final List<String> _estados = ['Bueno', 'Regular', 'Malo'];
+  ScaffoldMessengerState? _scaffoldMessenger;
+  CancelableOperation? _iconOperation;
+  CancelableOperation? _searchOperation;
+  CancelableOperation? _placeDetailsOperation;
+  CancelableOperation? _firestoreOperation;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomIcon().then((_) {
-      _loadContenedoresExistentes();
-    });
+    _loadCustomIcon();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scaffoldMessenger = ScaffoldMessenger.of(context);
   }
 
   Future<void> _loadCustomIcon() async {
-    _containerIcon = await BitmapDescriptor.fromAssetImage(
-      const ImageConfiguration(size: Size(64, 64)),
-      'assets/icons/contenedor_verde.png',
+    print('Cargando ícono personalizado en ${DateTime.now()}');
+    _iconOperation = CancelableOperation.fromFuture(
+      BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(64, 64)),
+        'assets/icons/contenedor_verde.png',
+      ).then((icon) {
+        if (mounted) {
+          _containerIcon = icon;
+          return _loadContenedoresExistentes();
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error cargando ícono: $e')),
+          );
+        }
+      }),
     );
   }
 
   void _onSearchChanged(String value) async {
     if (value.isEmpty) {
-      setState(() => _suggestions.clear());
+      if (mounted) {
+        setState(() => _suggestions.clear());
+      }
       return;
     }
-    final res = await _places.autocomplete(value, components: [Component(Component.country, "co")], language: 'es');
-    if (res.isOkay) {
-      setState(() {
-        _suggestions
-          ..clear()
-          ..addAll(res.predictions);
-      });
-    }
+    print('Buscando dirección: $value en ${DateTime.now()}');
+    _searchOperation?.cancel();
+    _searchOperation = CancelableOperation.fromFuture(
+      _places.autocomplete(value, components: [Component(Component.country, "co")], language: 'es').then((res) {
+        if (res.isOkay && mounted) {
+          setState(() {
+            _suggestions
+              ..clear()
+              ..addAll(res.predictions);
+          });
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error buscando dirección: $e')),
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _selectSuggestion(Prediction p) async {
-    final res = await _places.getDetailsByPlaceId(p.placeId!);
-    if (res.isOkay) {
-      final loc = res.result.geometry!.location;
-      final pos = LatLng(loc.lat, loc.lng);
-      setState(() {
-        _markers.removeWhere((m) => m.markerId.value == 'nuevo');
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('nuevo'),
-            position: pos,
-            icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
-            infoWindow: InfoWindow(title: res.result.name),
-          ),
-        );
-        _suggestions.clear();
-        _direccionController.text = p.description!;
-        _posicionInicial = pos;
-      });
-      _mapController.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
-    }
+    print('Seleccionando sugerencia ${p.placeId} en ${DateTime.now()}');
+    _placeDetailsOperation?.cancel();
+    _placeDetailsOperation = CancelableOperation.fromFuture(
+      _places.getDetailsByPlaceId(p.placeId!).then((res) {
+        if (res.isOkay && mounted) {
+          final loc = res.result.geometry!.location;
+          final pos = LatLng(loc.lat, loc.lng);
+          setState(() {
+            _markers.removeWhere((m) => m.markerId.value == 'nuevo');
+            _markers.add(
+              Marker(
+                markerId: const MarkerId('nuevo'),
+                position: pos,
+                icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
+                infoWindow: InfoWindow(title: res.result.name, snippet: _estadoContenedor ?? 'Estado no seleccionado'),
+              ),
+            );
+            _suggestions.clear();
+            _direccionController.text = p.description!;
+            _posicionInicial = pos;
+          });
+          if (_mapController != null && mounted) {
+            _mapController!.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
+          }
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error seleccionando dirección: $e')),
+          );
+        }
+      }),
+    );
   }
 
-  void _guardarContenedor() async {
+  Future<void> _guardarContenedor() async {
+    print('Guardando contenedor en ${DateTime.now()}');
     final direccion = _direccionController.text.trim();
-    final descripcion = _descripcionController.text.trim();
+    final estado = _estadoContenedor;
 
-    if (direccion.isNotEmpty && _markers.any((m) => m.markerId.value == 'nuevo')) {
+    if (direccion.isNotEmpty && _estadoContenedor != null && _markers.any((m) => m.markerId.value == 'nuevo')) {
       final marker = _markers.firstWhere((m) => m.markerId.value == 'nuevo');
       final lat = marker.position.latitude;
       final lng = marker.position.longitude;
 
-      try {
-        await FirebaseFirestore.instance.collection('contenedores').add({
+      _firestoreOperation?.cancel();
+      _firestoreOperation = CancelableOperation.fromFuture(
+        FirebaseFirestore.instance.collection('contenedores').add({
           'direccion': direccion,
-          'descripcion': descripcion,
+          'estado': estado,
           'latitud': lat,
           'longitud': lng,
           'fecha_creacion': FieldValue.serverTimestamp(),
-        });
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contenedor guardado en Firestore')),
-        );
-
-        _direccionController.clear();
-        _descripcionController.clear();
-        setState(() {
-          _markers.remove(marker);
-        });
-        _loadContenedoresExistentes();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
+        }).then((_) {
+          if (mounted) {
+            _scaffoldMessenger?.showSnackBar(
+              const SnackBar(content: Text('Contenedor guardado en Firestore')),
+            );
+            _direccionController.clear();
+            setState(() {
+              _estadoContenedor = null;
+              _markers.remove(marker);
+            });
+            return _loadContenedoresExistentes();
+          }
+        }).catchError((e) {
+          if (mounted) {
+            _scaffoldMessenger?.showSnackBar(
+              SnackBar(content: Text('Error al guardar: $e')),
+            );
+          }
+        }),
+      );
+    } else {
+      if (mounted) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(content: Text('Por favor selecciona una dirección y un estado')),
         );
       }
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor selecciona una dirección')),
-      );
     }
   }
 
   Future<void> _loadContenedoresExistentes() async {
-    _markers.removeWhere((m) => m.markerId.value != 'nuevo');
-    final snapshot = await FirebaseFirestore.instance.collection('contenedores').get();
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final lat = data['latitud'];
-      final lng = data['longitud'];
-      final direccion = data['direccion'];
-      final descripcion = data['descripcion'];
-      final docId = doc.id;
+    print('Cargando contenedores existentes en ${DateTime.now()}');
+    _firestoreOperation?.cancel();
+    _firestoreOperation = CancelableOperation.fromFuture(
+      FirebaseFirestore.instance.collection('contenedores').get().then((snapshot) {
+        if (mounted) {
+          _markers.removeWhere((m) => m.markerId.value != 'nuevo');
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final lat = data['latitud'];
+            final lng = data['longitud'];
+            final direccion = data['direccion'];
+            final estado = data['estado'] ?? data['descripcion'] ?? 'Sin estado';
+            final docId = doc.id;
 
-      final marker = Marker(
-        markerId: MarkerId(docId),
-        position: LatLng(lat, lng),
-        icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
-        infoWindow: InfoWindow(title: direccion, snippet: descripcion),
-        onTap: () => _mostrarDialogoEliminarContenedor(docId, direccion),
-      );
+            final marker = Marker(
+              markerId: MarkerId(docId),
+              position: LatLng(lat, lng),
+              icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
+              infoWindow: InfoWindow(title: direccion, snippet: estado),
+              onTap: () => _mostrarDialogoEliminarContenedor(docId, direccion),
+            );
 
-      _markers.add(marker);
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
+            _markers.add(marker);
+          }
+          setState(() {});
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error cargando contenedores: $e')),
+          );
+        }
+      }),
+    );
   }
 
-  void _mostrarDialogoEliminarContenedor(String docId, String? direccion) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+  Future<void> _mostrarDialogoEliminarContenedor(String docId, String? direccion) async {
+    print('Mostrando diálogo para eliminar contenedor $docId en ${DateTime.now()}');
+    if (!mounted) return;
+    final dialogContext = context;
+    final result = await showDialog<bool>(
+      context: dialogContext,
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text("¿Eliminar contenedor?"),
         content: Text("¿Deseas eliminar el contenedor ubicado en:\n\n$direccion?"),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text("Cancelar"),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await FirebaseFirestore.instance.collection('contenedores').doc(docId).delete();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Contenedor eliminado")),
-              );
-              _loadContenedoresExistentes();
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text("Eliminar", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
+
+    if (result == true && mounted) {
+      _firestoreOperation?.cancel();
+      _firestoreOperation = CancelableOperation.fromFuture(
+        FirebaseFirestore.instance.collection('contenedores').doc(docId).delete().then((_) {
+          if (mounted) {
+            _scaffoldMessenger?.showSnackBar(
+              const SnackBar(content: Text("Contenedor eliminado")),
+            );
+            return _loadContenedoresExistentes();
+          }
+        }).catchError((e) {
+          if (mounted) {
+            _scaffoldMessenger?.showSnackBar(
+              SnackBar(content: Text('Error al eliminar: $e')),
+            );
+          }
+        }),
+      );
+    }
   }
 
   @override
   void dispose() {
+    print('Disposing AgregarContenedorScreen at ${DateTime.now()}');
+    _iconOperation?.cancel();
+    _searchOperation?.cancel();
+    _placeDetailsOperation?.cancel();
+    _firestoreOperation?.cancel();
     _direccionController.dispose();
-    _descripcionController.dispose();
+    _mapController?.dispose();
+    _places.dispose();
+    _iconOperation = null;
+    _searchOperation = null;
+    _placeDetailsOperation = null;
+    _firestoreOperation = null;
+    _scaffoldMessenger = null;
     super.dispose();
   }
 
@@ -206,7 +295,9 @@ class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
                             icon: const Icon(Icons.clear),
                             onPressed: () {
                               _direccionController.clear();
-                              setState(() => _suggestions.clear());
+                              if (mounted) {
+                                setState(() => _suggestions.clear());
+                              }
                             },
                           ),
                     border: const OutlineInputBorder(),
@@ -233,12 +324,27 @@ class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
                     ),
                   ),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: _descripcionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción del contenedor',
-                    border: OutlineInputBorder(),
+                DropdownButtonFormField<String>(
+                  value: _estadoContenedor,
+                  decoration: InputDecoration(
+                    labelText: 'Estado del contenedor',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.info, color: Colors.green),
                   ),
+                  items: _estados
+                      .map((estado) => DropdownMenuItem(
+                            value: estado,
+                            child: Text(estado),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (mounted) {
+                      setState(() {
+                        _estadoContenedor = value;
+                      });
+                    }
+                  },
+                  validator: (value) => value == null ? 'Selecciona un estado' : null,
                 ),
                 const SizedBox(height: 10),
                 ElevatedButton.icon(
@@ -255,7 +361,11 @@ class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
           ),
           Expanded(
             child: GoogleMap(
-              onMapCreated: (controller) => _mapController = controller,
+              onMapCreated: (controller) {
+                if (mounted) {
+                  _mapController = controller;
+                }
+              },
               initialCameraPosition: CameraPosition(target: _posicionInicial, zoom: 13),
               markers: _markers,
               myLocationEnabled: true,

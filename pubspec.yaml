@@ -51,6 +51,13 @@ dependencies:
   logger: ^2.4.0
   google_maps_webservice: ^0.0.19
   url_launcher: ^6.2.5
+  async: ^2.11.0
+  video_player: ^2.8.2  # Para reproducir videos
+  chewie: ^1.7.3       # Interfaz de reproductor de video
+  photo_view: ^0.15.0 
+  flutter_svg: ^2.0.9
+   # Para zoom en imágenes
+  
   
   
   

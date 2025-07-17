@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:async/async.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -15,7 +16,7 @@ class ContainerMapScreen extends StatefulWidget {
 }
 
 class _ContainerMapScreenState extends State<ContainerMapScreen> {
-  late GoogleMapController _mapController;
+  GoogleMapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   final List<Prediction> _suggestions = [];
   final Set<Marker> _markers = {};
@@ -23,6 +24,13 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
   final places = GoogleMapsPlaces(apiKey: googleApiKey);
   LatLng? _userLocation;
   BitmapDescriptor? _containerIcon;
+  ScaffoldMessengerState? _scaffoldMessenger;
+  CancelableOperation? _iconOperation;
+  CancelableOperation? _locationOperation;
+  CancelableOperation? _searchOperation;
+  CancelableOperation? _placeDetailsOperation;
+  CancelableOperation? _firestoreOperation;
+  CancelableOperation? _directionsOperation;
 
   @override
   void initState() {
@@ -32,149 +40,258 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
     _loadContainerMarkers();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scaffoldMessenger = ScaffoldMessenger.of(context);
+  }
+
   Future<void> _loadCustomIcons() async {
-  _containerIcon = await BitmapDescriptor.fromAssetImage(
-  const ImageConfiguration(size: Size(64, 64)), // más pequeño
-  'assets/icons/contenedor_verde.png',
-  );
-}
+    print('Cargando ícono personalizado en ${DateTime.now()}');
+    _iconOperation = CancelableOperation.fromFuture(
+      BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(64, 64)),
+        'assets/icons/contenedor_verde.png',
+      ).then((icon) {
+        if (mounted) {
+          setState(() {
+            _containerIcon = icon;
+          });
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error cargando ícono: $e')),
+          );
+        }
+      }),
+    );
+  }
 
   Future<void> _loadUserLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    print('Cargando ubicación del usuario en ${DateTime.now()}');
+    _locationOperation?.cancel();
+    _locationOperation = CancelableOperation.fromFuture(
+      Geolocator.isLocationServiceEnabled().then((serviceEnabled) async {
+        if (!serviceEnabled) {
+          if (mounted) {
+            _scaffoldMessenger?.showSnackBar(
+              const SnackBar(content: Text("Los servicios de ubicación están desactivados")),
+            );
+          }
+          return;
+        }
 
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            if (mounted) {
+              _scaffoldMessenger?.showSnackBar(
+                const SnackBar(content: Text("Permiso de ubicación denegado")),
+              );
+            }
+            return;
+          }
+        }
 
-    Position position = await Geolocator.getCurrentPosition();
-    setState(() {
-      _userLocation = LatLng(position.latitude, position.longitude);
-    });
+        Position position = await Geolocator.getCurrentPosition();
+        if (mounted) {
+          setState(() {
+            _userLocation = LatLng(position.latitude, position.longitude);
+          });
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error obteniendo ubicación: $e')),
+          );
+        }
+      }),
+    );
   }
 
   void _centrarEnMiUbicacion() {
-    if (_userLocation != null && _mapController != null) {
-      _mapController.animateCamera(
+    print('Centrando en ubicación del usuario en ${DateTime.now()}');
+    if (_userLocation != null && _mapController != null && mounted) {
+      _mapController!.animateCamera(
         CameraUpdate.newLatLngZoom(_userLocation!, 16),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Ubicación del usuario no disponible")),
-      );
+      if (mounted) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(content: Text("Ubicación del usuario no disponible")),
+        );
+      }
     }
   }
 
   void _onSearchChanged(String value) async {
     if (value.isEmpty) {
-      setState(() => _suggestions.clear());
+      if (mounted) {
+        setState(() => _suggestions.clear());
+      }
       return;
     }
-    final res = await places.autocomplete(
-      value,
-      components: [Component(Component.country, "co")],
-      language: 'es',
+    print('Buscando dirección: $value en ${DateTime.now()}');
+    _searchOperation?.cancel();
+    _searchOperation = CancelableOperation.fromFuture(
+      places.autocomplete(
+        value,
+        components: [Component(Component.country, "co")],
+        language: 'es',
+      ).then((res) {
+        if (res.isOkay && mounted) {
+          setState(() {
+            _suggestions
+              ..clear()
+              ..addAll(res.predictions);
+          });
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error buscando dirección: $e')),
+          );
+        }
+      }),
     );
-    if (res.isOkay) {
-      setState(() {
-        _suggestions
-          ..clear()
-          ..addAll(res.predictions);
-      });
-    }
   }
 
   Future<void> _selectSuggestion(Prediction p) async {
-    final res = await places.getDetailsByPlaceId(p.placeId!);
-    if (res.isOkay) {
-      final loc = res.result.geometry!.location;
-      final pos = LatLng(loc.lat, loc.lng);
-      setState(() {
-        _markers.clear();
-        _markers.add(Marker(
-          markerId: MarkerId(p.placeId!),
-          position: pos,
-          infoWindow: InfoWindow(title: res.result.name),
-        ));
-        _suggestions.clear();
-        _searchController.text = p.description!;
-      });
-      _mapController.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
-    }
+    print('Seleccionando sugerencia ${p.placeId} en ${DateTime.now()}');
+    _placeDetailsOperation?.cancel();
+    _placeDetailsOperation = CancelableOperation.fromFuture(
+      places.getDetailsByPlaceId(p.placeId!).then((res) {
+        if (res.isOkay && mounted) {
+          final loc = res.result.geometry!.location;
+          final pos = LatLng(loc.lat, loc.lng);
+          setState(() {
+            _markers.clear();
+            _markers.add(Marker(
+              markerId: MarkerId(p.placeId!),
+              position: pos,
+              infoWindow: InfoWindow(title: res.result.name),
+            ));
+            _suggestions.clear();
+            _searchController.text = p.description!;
+          });
+          if (_mapController != null && mounted) {
+            _mapController!.animateCamera(CameraUpdate.newLatLngZoom(pos, 15));
+          }
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error seleccionando dirección: $e')),
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _loadContainerMarkers() async {
-    final snapshot = await FirebaseFirestore.instance.collection('contenedores').get();
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final lat = data['latitud'];
-      final lng = data['longitud'];
-      final address = data['direccion'];
-      if (lat != null && lng != null) {
-        final pos = LatLng(lat, lng);
-        _markers.add(
-          Marker(
-            markerId: MarkerId(doc.id),
-            position: pos,
-            icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
-            infoWindow: InfoWindow(
-              title: address ?? 'Contenedor',
-              snippet: 'Cómo llegar',
-              onTap: () => _mostrarRutaHastaContenedor(pos),
-            ),
-          ),
-        );
-      }
-    }
-    setState(() {});
+    print('Cargando marcadores de contenedores en ${DateTime.now()}');
+    _firestoreOperation?.cancel();
+    _firestoreOperation = CancelableOperation.fromFuture(
+      FirebaseFirestore.instance.collection('contenedores').get().then((snapshot) {
+        if (mounted) {
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final lat = data['latitud'];
+            final lng = data['longitud'];
+            final address = data['direccion'];
+            final estado = data['estado'] ?? data['descripcion'] ?? 'Sin estado';
+            if (lat != null && lng != null) {
+              final pos = LatLng(lat, lng);
+              _markers.add(
+                Marker(
+                  markerId: MarkerId(doc.id),
+                  position: pos,
+                  icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
+                  infoWindow: InfoWindow(
+                    title: address ?? 'Contenedor',
+                    snippet: 'Estado: $estado',
+                    onTap: () => _mostrarRutaHastaContenedor(pos),
+                  ),
+                ),
+              );
+            }
+          }
+          setState(() {});
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error cargando contenedores: $e')),
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _mostrarRutaHastaContenedor(LatLng destino) async {
-    if (_userLocation == null) return;
+    print('Mostrando ruta a ${destino.latitude},${destino.longitude} en ${DateTime.now()}');
+    if (_userLocation == null) {
+      if (mounted) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(content: Text("Ubicación del usuario no disponible")),
+        );
+      }
+      return;
+    }
 
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/directions/json?origin=${_userLocation!.latitude},${_userLocation!.longitude}&destination=${destino.latitude},${destino.longitude}&key=$googleApiKey',
+    _directionsOperation?.cancel();
+    _directionsOperation = CancelableOperation.fromFuture(
+      http.get(Uri.parse(
+        'https://maps.googleapis.com/maps/api/directions/json?origin=${_userLocation!.latitude},${_userLocation!.longitude}&destination=${destino.latitude},${destino.longitude}&key=$googleApiKey',
+      )).then((response) {
+        if (mounted) {
+          final json = jsonDecode(response.body);
+          final routes = json['routes'];
+          if (routes == null || routes.isEmpty) {
+            _scaffoldMessenger?.showSnackBar(
+              const SnackBar(content: Text("No se pudo encontrar una ruta.")),
+            );
+            return;
+          }
+
+          final points = routes[0]['overview_polyline']['points'];
+          final List<LatLng> routeCoords = _decodePolyline(points);
+
+          if (routeCoords.isEmpty) {
+            _scaffoldMessenger?.showSnackBar(
+              const SnackBar(content: Text("La ruta está vacía.")),
+            );
+            return;
+          }
+
+          setState(() {
+            _polylines.clear();
+            _polylines.add(
+              Polyline(
+                polylineId: const PolylineId("route"),
+                points: routeCoords,
+                color: Colors.blue,
+                width: 5,
+              ),
+            );
+          });
+          if (_mapController != null && mounted) {
+            _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
+              _boundsFromLatLngList(routeCoords),
+              100,
+            ));
+          }
+        }
+      }).catchError((e) {
+        if (mounted) {
+          _scaffoldMessenger?.showSnackBar(
+            SnackBar(content: Text('Error mostrando ruta: $e')),
+          );
+        }
+      }),
     );
-
-    final response = await http.get(url);
-    final json = jsonDecode(response.body);
-
-    final routes = json['routes'];
-    if (routes == null || routes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No se pudo encontrar una ruta.")),
-      );
-      return;
-    }
-
-    final points = routes[0]['overview_polyline']['points'];
-    final List<LatLng> routeCoords = _decodePolyline(points);
-
-    if (routeCoords.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("La ruta está vacía.")),
-      );
-      return;
-    }
-
-    setState(() {
-      _polylines.clear();
-      _polylines.add(
-        Polyline(
-          polylineId: const PolylineId("route"),
-          points: routeCoords,
-          color: Colors.blue,
-          width: 5,
-        ),
-      );
-    });
-
-    _mapController.animateCamera(CameraUpdate.newLatLngBounds(
-      _boundsFromLatLngList(routeCoords),
-      100,
-    ));
   }
 
   List<LatLng> _decodePolyline(String poly) {
@@ -223,6 +340,28 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
   }
 
   @override
+  void dispose() {
+    print('Disposing ContainerMapScreen at ${DateTime.now()}');
+    _iconOperation?.cancel();
+    _locationOperation?.cancel();
+    _searchOperation?.cancel();
+    _placeDetailsOperation?.cancel();
+    _firestoreOperation?.cancel();
+    _directionsOperation?.cancel();
+    _searchController.dispose();
+    _mapController?.dispose();
+    places.dispose();
+    _iconOperation = null;
+    _locationOperation = null;
+    _searchOperation = null;
+    _placeDetailsOperation = null;
+    _firestoreOperation = null;
+    _directionsOperation = null;
+    _scaffoldMessenger = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -232,7 +371,11 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
       body: Stack(
         children: [
           GoogleMap(
-            onMapCreated: (c) => _mapController = c,
+            onMapCreated: (c) {
+              if (mounted) {
+                _mapController = c;
+              }
+            },
             initialCameraPosition: const CameraPosition(
               target: LatLng(10.4631, -73.2532),
               zoom: 13,
@@ -240,7 +383,7 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
             markers: _markers,
             polylines: _polylines,
             myLocationEnabled: true,
-            myLocationButtonEnabled: false, // usamos el FAB personalizado
+            myLocationButtonEnabled: false,
           ),
           Positioned(
             top: 10,
@@ -263,7 +406,9 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() => _suggestions.clear());
+                                if (mounted) {
+                                  setState(() => _suggestions.clear());
+                                }
                               },
                             ),
                       border: InputBorder.none,

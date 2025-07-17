@@ -100,6 +100,9 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
 
   Future<void> _createNotification(String userId, String title, String role, Map<String, dynamic> complaintData) async {
     try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      String senderEmail = currentUser?.email ?? 'correo@desconocido.com';
+
       final notificationData = {
         'userId': userId,
         'title': title,
@@ -112,9 +115,10 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         'neighborhood': complaintData['neighborhood'],
         'recipient': complaintData['recipient'],
         'imageUrl': complaintData['imageUrl'],
+        'senderEmail': senderEmail, // Cambiado de senderName a senderEmail
       };
       await FirebaseFirestore.instance.collection('notifications').add(notificationData);
-      print('Notificación creada para userId: $userId, complaintId: ${complaintData['complaintId']} en ${DateTime.now()}');
+      print('Notificación creada para userId: $userId, senderEmail: $senderEmail en ${DateTime.now()}');
     } catch (e) {
       print('Error al crear notificación: $e en ${DateTime.now()}');
     }

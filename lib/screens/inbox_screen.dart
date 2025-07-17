@@ -13,6 +13,8 @@ class InboxScreen extends StatefulWidget {
 
 class _InboxScreenState extends State<InboxScreen> {
   String? userRole;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -21,7 +23,7 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Future<void> _fetchUserRole() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _auth.currentUser;
     if (user == null) {
       setState(() {
         userRole = null;
@@ -30,7 +32,7 @@ class _InboxScreenState extends State<InboxScreen> {
       return;
     }
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
       setState(() {
         userRole = userDoc.data()?['role'] ?? 'usuario';
         print('Rol del usuario cargado: $userRole para UID: ${user.uid} en ${DateTime.now()}');
@@ -43,48 +45,101 @@ class _InboxScreenState extends State<InboxScreen> {
     }
   }
 
+  Future<void> _updateExistingNotifications() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('No hay usuario autenticado para actualizar notificaciones en ${DateTime.now()}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debes iniciar sesión para actualizar notificaciones.')),
+      );
+      return;
+    }
+    try {
+      final snapshot = await _firestore.collection('notifications').get();
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['title'] == 'Queja Enviada' || data['title'] == 'Nueva Queja Recibida') {
+          if (data['senderName'] != null && data['senderEmail'] == null) {
+            final userDoc = await _firestore.collection('users').doc(data['userId']).get();
+            final senderEmail = userDoc.data()?['email'] ?? 'correo@desconocido.com';
+            batch.update(doc.reference, {
+              'senderEmail': senderEmail,
+              'senderName': FieldValue.delete(),
+            });
+          }
+        } else if (data['title'] == 'Respuesta a tu Queja') {
+          if (data['responderName'] != null && data['responderEmail'] == null) {
+            batch.update(doc.reference, {
+              'responderEmail': 'admin@desconocido.com',
+              'responderName': FieldValue.delete(),
+            });
+          }
+        }
+      }
+      await batch.commit();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notificaciones actualizadas exitosamente')),
+      );
+      print('Notificaciones actualizadas con senderEmail y responderEmail en ${DateTime.now()}');
+    } catch (e) {
+      print('Error al actualizar notificaciones: $e en ${DateTime.now()}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar notificaciones: $e')),
+      );
+    }
+  }
+
   Widget _buildComplaintDetails(Map<String, dynamic> notification) {
+    final isResponseNotification = notification['title'] == 'Respuesta a tu Queja';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildDetailRow('Descripción', notification['description'] ?? 'Sin descripción'),
-        _buildDetailRow('Dirección', notification['address'] ?? 'Sin dirección'),
-        _buildDetailRow('Barrio', notification['neighborhood'] ?? 'Sin barrio'),
-        _buildDetailRow('Destinatario', notification['recipient'] ?? 'No especificado'),
-        const SizedBox(height: 10),
-        notification['imageUrl'] != null && (notification['imageUrl'] as String).isNotEmpty
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: CachedNetworkImage(
-                  imageUrl: notification['imageUrl'],
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
+        if (!isResponseNotification) ...[
+          _buildDetailRow('Descripción', notification['description'] ?? 'Sin descripción'),
+          _buildDetailRow('Dirección', notification['address'] ?? 'Sin dirección'),
+          _buildDetailRow('Barrio', notification['neighborhood'] ?? 'Sin barrio'),
+          _buildDetailRow('Destinatario', notification['recipient'] ?? 'No especificado'),
+          _buildDetailRow('Enviado por', notification['senderEmail'] ?? 'No especificado'),
+          const SizedBox(height: 10),
+          notification['imageUrl'] != null && (notification['imageUrl'] as String).isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: CachedNetworkImage(
+                    imageUrl: notification['imageUrl'],
                     height: 150,
-                    color: Colors.grey[300],
-                    child: const Center(child: CircularProgressIndicator(color: Colors.green)),
-                  ),
-                  errorWidget: (context, url, error) {
-                    print('Error al cargar imagen: $error para URL: ${notification['imageUrl']} en ${DateTime.now()}');
-                    return Container(
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
                       height: 150,
                       color: Colors.grey[300],
-                      child: const Center(child: Icon(Icons.error, color: Colors.red)),
-                    );
-                  },
-                ),
-              )
-            : Container(
-                height: 150,
-                color: Colors.grey[300],
-                child: const Center(
-                  child: Text(
-                    'No se proporcionó ninguna imagen',
-                    style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                      child: const Center(child: CircularProgressIndicator(color: Colors.green)),
+                    ),
+                    errorWidget: (context, url, error) {
+                      print('Error al cargar imagen: $error para URL: ${notification['imageUrl']} en ${DateTime.now()}');
+                      return Container(
+                        height: 150,
+                        color: Colors.grey[300],
+                        child: const Center(child: Icon(Icons.error, color: Colors.red)),
+                      );
+                    },
+                  ),
+                )
+              : Container(
+                  height: 150,
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: Text(
+                      'No se proporcionó ninguna imagen',
+                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
                   ),
                 ),
-              ),
+        ],
+        if (isResponseNotification) ...[
+          _buildDetailRow('Respuesta', notification['message'] ?? 'Sin mensaje'),
+          _buildDetailRow('Respondido por', notification['responderEmail'] ?? 'No especificado'),
+        ],
       ],
     );
   }
@@ -162,7 +217,7 @@ class _InboxScreenState extends State<InboxScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _auth.currentUser;
 
     if (user == null) {
       print('Usuario no autenticado al intentar cargar InboxScreen en ${DateTime.now()}');
@@ -192,6 +247,11 @@ class _InboxScreenState extends State<InboxScreen> {
           },
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.update, color: Colors.white),
+            tooltip: 'Actualizar notificaciones',
+            onPressed: _updateExistingNotifications,
+          ),
           IconButton(
             icon: const Icon(Icons.delete_forever, color: Colors.white),
             tooltip: 'Eliminar todas las notificaciones',
@@ -229,7 +289,7 @@ class _InboxScreenState extends State<InboxScreen> {
           ),
         ),
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
+          stream: _firestore
               .collection('notifications')
               .where('userId', isEqualTo: user.uid)
               .orderBy('timestamp', descending: true)
@@ -281,7 +341,9 @@ class _InboxScreenState extends State<InboxScreen> {
                 final formattedDate = timestamp != null
                     ? DateFormat('yyyy-MM-dd, HH:mm').format(timestamp.toDate()).replaceAll('PM', 'PM -05').replaceAll('AM', 'AM -05')
                     : 'Sin fecha';
-                final isComplaintNotification = notification['title'] == 'Queja Enviada' || notification['title'] == 'Nueva Queja Recibida';
+                final isComplaintNotification = notification['title'] == 'Queja Enviada' ||
+                    notification['title'] == 'Nueva Queja Recibida' ||
+                    notification['title'] == 'Respuesta a tu Queja';
 
                 print('Mostrando notificación $notificationId: ${notification['title']} en ${DateTime.now()}');
 
@@ -345,7 +407,7 @@ class _InboxScreenState extends State<InboxScreen> {
                     ),
                     onTap: () async {
                       try {
-                        await FirebaseFirestore.instance
+                        await _firestore
                             .collection('notifications')
                             .doc(notificationId)
                             .update({'read': true});

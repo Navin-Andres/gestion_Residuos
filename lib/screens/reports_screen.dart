@@ -43,9 +43,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         userRole = userDoc.data()?['role'] ?? 'usuario';
         print('Rol del usuario cargado: $userRole para UID: ${user.uid} en ${DateTime.now()}');
       });
-      if (userRole != 'empresa' && userRole != 'autoridad') {
+      if (userRole != 'empresa' && userRole != 'administrador') {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solo empresas o autoridades pueden acceder a esta pantalla.')),
+          const SnackBar(content: Text('Solo empresas o administradores pueden acceder a esta pantalla.')),
         );
         Navigator.pushReplacementNamed(context, '/home');
       }
@@ -63,21 +63,66 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _createNotification(String userId, String title, String message, String role) async {
     try {
-      await _firestore.collection('notifications').add({
+      final currentUser = _auth.currentUser;
+      String? responderEmail;
+      if (currentUser != null && title == 'Respuesta a tu Queja') {
+        responderEmail = currentUser.email ?? 'correo@desconocido.com';
+      }
+
+      final notificationData = {
         'userId': userId,
         'title': title,
         'message': message,
         'timestamp': FieldValue.serverTimestamp(),
         'role': role,
-      });
-      print('Notificación creada para userId: $userId en ${DateTime.now()}');
+        if (responderEmail != null) 'responderEmail': responderEmail,
+      };
+      await _firestore.collection('notifications').add(notificationData);
+      print('Notificación creada para userId: $userId, responderEmail: $responderEmail en ${DateTime.now()}');
     } catch (e) {
       print('Error al crear notificación: $e en ${DateTime.now()}');
     }
   }
 
+  Future<void> _updateExistingNotifications() async {
+    try {
+      final snapshot = await _firestore.collection('notifications').get();
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['title'] == 'Queja Enviada' || data['title'] == 'Nueva Queja Recibida') {
+          if (data['senderName'] != null && data['senderEmail'] == null) {
+            final userDoc = await _firestore.collection('users').doc(data['userId']).get();
+            final senderEmail = userDoc.data()?['email'] ?? 'correo@desconocido.com';
+            batch.update(doc.reference, {
+              'senderEmail': senderEmail,
+              'senderName': FieldValue.delete(),
+            });
+          }
+        } else if (data['title'] == 'Respuesta a tu Queja') {
+          if (data['responderName'] != null && data['responderEmail'] == null) {
+            batch.update(doc.reference, {
+              'responderEmail': 'admin@desconocido.com',
+              'responderName': FieldValue.delete(),
+            });
+          }
+        }
+      }
+      await batch.commit();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notificaciones actualizadas exitosamente')),
+      );
+      print('Notificaciones actualizadas con senderEmail y responderEmail en ${DateTime.now()}');
+    } catch (e) {
+      print('Error al actualizar notificaciones: $e en ${DateTime.now()}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar notificaciones: $e')),
+      );
+    }
+  }
+
   Future<void> _deleteSelectedComplaints() async {
-    if (userRole != 'empresa' && userRole != 'autoridad') return;
+    if (userRole != 'empresa' && userRole != 'administrador') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -120,7 +165,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           await _createNotification(
             complaintUserId,
             'Queja Eliminada',
-            'Tu queja ha sido eliminada por una empresa o autoridad.',
+            'Tu queja ha sido eliminada por una empresa o administrador.',
             'usuario',
           );
         }
@@ -140,7 +185,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _deleteAllComplaints() async {
-    if (userRole != 'empresa' && userRole != 'autoridad') return;
+    if (userRole != 'empresa' && userRole != 'administrador') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -183,7 +228,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           await _createNotification(
             complaintUserId,
             'Queja Eliminada',
-            'Tu queja ha sido eliminada por una empresa o autoridad.',
+            'Tu queja ha sido eliminada por una empresa o administrador.',
             'usuario',
           );
         }
@@ -203,7 +248,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _deleteComplaint(String docId, String? imageUrl) async {
-    if (userRole != 'empresa' && userRole != 'autoridad') return;
+    if (userRole != 'empresa' && userRole != 'administrador') return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -244,7 +289,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         await _createNotification(
           complaintUserId,
           'Queja Eliminada',
-          'Tu queja ha sido eliminada por una empresa o autoridad.',
+          'Tu queja ha sido eliminada por una empresa o administrador.',
           'usuario',
         );
       }
@@ -260,123 +305,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _viewDetails(String docId, Map<String, dynamic> report) async {
-    final responseController = TextEditingController();
-    bool isLoading = false;
-
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Detalles de la Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildDetailRow('Nombre Completo', report['fullName'] ?? 'Sin nombre'),
-                _buildDetailRow('Cédula', report['idNumber'] ?? 'No disponible'),
-                _buildDetailRow('Teléfono', report['phone'] ?? 'No disponible'),
-                _buildDetailRow('Descripción', report['description'] ?? 'Sin descripción'),
-                _buildDetailRow('Dirección', report['address'] ?? 'Sin dirección'),
-                _buildDetailRow('Barrio', report['neighborhood'] ?? 'Sin barrio'),
-                _buildDetailRow('Estado', report['status'] ?? 'Pendiente'),
-                _buildDetailRow('Destinatario', report['recipient'] ?? 'No especificado'),
-                const SizedBox(height: 10),
-                report['imageUrl'] != null && (report['imageUrl'] as String).isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: CachedNetworkImage(
-                          imageUrl: report['imageUrl'],
-                          height: 200,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            height: 200,
-                            color: Colors.grey[300],
-                            child: const Center(child: CircularProgressIndicator(color: Colors.green)),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            height: 200,
-                            color: Colors.grey[300],
-                            child: const Center(child: Icon(Icons.error, color: Colors.red)),
-                          ),
-                        ),
-                      )
-                    : Container(
-                        height: 200,
-                        color: Colors.grey[300],
-                        child: const Center(
-                          child: Text(
-                            'No se proporcionó ninguna imagen',
-                            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                          ),
-                        ),
-                      ),
-                const SizedBox(height: 10),
-                if (userRole == 'empresa' || userRole == 'autoridad') ...[
-                  TextField(
-                    controller: responseController,
-                    decoration: const InputDecoration(
-                      labelText: 'Responder a la queja',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
-                    enabled: !isLoading,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isLoading ? null : () => Navigator.pop(context),
-              child: const Text('Cerrar', style: TextStyle(color: Colors.green)),
-            ),
-            if (userRole == 'empresa' || userRole == 'autoridad')
-              TextButton(
-                onPressed: isLoading
-                    ? null
-                    : () async {
-                        if (responseController.text.isEmpty || responseController.text.length < 5) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('La respuesta debe tener al menos 5 caracteres')),
-                          );
-                          return;
-                        }
-
-                        setDialogState(() {
-                          isLoading = true;
-                        });
-
-                        try {
-                          await _createNotification(
-                            report['userId'],
-                            'Respuesta a tu Queja',
-                            responseController.text,
-                            'usuario',
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Respuesta enviada exitosamente')),
-                          );
-                          Navigator.pop(context);
-                        } catch (e) {
-                          print('Error al enviar respuesta: $e en ${DateTime.now()}');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error al enviar respuesta: $e')),
-                          );
-                        } finally {
-                          setDialogState(() {
-                            isLoading = false;
-                          });
-                        }
-                      },
-                child: const Text('Enviar Respuesta', style: TextStyle(color: Colors.green)),
-              ),
-          ],
-        ),
+      builder: (context) => ComplaintDetailsDialog(
+        report: report,
+        userRole: userRole,
+        onSendResponse: (response) async {
+          try {
+            await _createNotification(
+              report['userId'],
+              'Respuesta a tu Queja',
+              response,
+              'usuario',
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Respuesta enviada exitosamente')),
+            );
+          } catch (e) {
+            print('Error al enviar respuesta: $e en ${DateTime.now()}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error al enviar respuesta: $e')),
+            );
+          }
+        },
       ),
     );
-
-    responseController.dispose();
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -426,11 +379,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
             },
           ),
           actions: [
-            if (userRole == 'empresa' || userRole == 'autoridad') ...[
+            if (userRole == 'empresa' || userRole == 'administrador') ...[
               IconButton(
                 icon: const Icon(Icons.delete_sweep, color: Colors.white),
                 onPressed: _selectedComplaints.isNotEmpty ? _deleteSelectedComplaints : _deleteAllComplaints,
                 tooltip: _selectedComplaints.isNotEmpty ? 'Eliminar seleccionadas' : 'Eliminar todas',
+              ),
+              IconButton(
+                icon: const Icon(Icons.update, color: Colors.white),
+                onPressed: _updateExistingNotifications,
+                tooltip: 'Actualizar notificaciones',
               ),
             ],
           ],
@@ -511,7 +469,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (userRole == 'empresa' || userRole == 'autoridad')
+                          if (userRole == 'empresa' || userRole == 'administrador')
                             Checkbox(
                               value: _selectedComplaints.contains(docId),
                               onChanged: (value) {
@@ -547,7 +505,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                           onPressed: () => _viewDetails(docId, report),
                                           tooltip: 'Ver detalles',
                                         ),
-                                        if (userRole == 'empresa' || userRole == 'autoridad')
+                                        if (userRole == 'empresa' || userRole == 'administrador')
                                           IconButton(
                                             icon: const Icon(Icons.delete, color: Colors.red),
                                             onPressed: () => _deleteComplaint(docId, imageUrl),
@@ -612,6 +570,152 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class ComplaintDetailsDialog extends StatefulWidget {
+  final Map<String, dynamic> report;
+  final String? userRole;
+  final Future<void> Function(String) onSendResponse;
+
+  const ComplaintDetailsDialog({
+    super.key,
+    required this.report,
+    required this.userRole,
+    required this.onSendResponse,
+  });
+
+  @override
+  _ComplaintDetailsDialogState createState() => _ComplaintDetailsDialogState();
+}
+
+class _ComplaintDetailsDialogState extends State<ComplaintDetailsDialog> {
+  final TextEditingController _responseController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _responseController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Detalles de la Queja', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Nombre Completo', widget.report['fullName'] ?? 'Sin nombre'),
+            _buildDetailRow('Cédula', widget.report['idNumber'] ?? 'No disponible'),
+            _buildDetailRow('Teléfono', widget.report['phone'] ?? 'No disponible'),
+            _buildDetailRow('Descripción', widget.report['description'] ?? 'Sin descripción'),
+            _buildDetailRow('Dirección', widget.report['address'] ?? 'Sin dirección'),
+            _buildDetailRow('Barrio', widget.report['neighborhood'] ?? 'Sin barrio'),
+            _buildDetailRow('Estado', widget.report['status'] ?? 'Pendiente'),
+            _buildDetailRow('Destinatario', widget.report['recipient'] ?? 'No especificado'),
+            const SizedBox(height: 10),
+            widget.report['imageUrl'] != null && (widget.report['imageUrl'] as String).isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: CachedNetworkImage(
+                      imageUrl: widget.report['imageUrl'],
+                      height: 200,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        height: 200,
+                        color: Colors.grey[300],
+                        child: const Center(child: CircularProgressIndicator(color: Colors.green)),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        height: 200,
+                        color: Colors.grey[300],
+                        child: const Center(child: Icon(Icons.error, color: Colors.red)),
+                      ),
+                    ),
+                  )
+                : Container(
+                    height: 200,
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: Text(
+                        'No se proporcionó ninguna imagen',
+                        style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  ),
+            const SizedBox(height: 10),
+            if (widget.userRole == 'empresa' || widget.userRole == 'administrador') ...[
+              TextField(
+                controller: _responseController,
+                decoration: const InputDecoration(
+                  labelText: 'Responder a la queja',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                enabled: !_isLoading,
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cerrar', style: TextStyle(color: Colors.green)),
+        ),
+        if (widget.userRole == 'empresa' || widget.userRole == 'administrador')
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    if (_responseController.text.isEmpty || _responseController.text.length < 5) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('La respuesta debe tener al menos 5 caracteres')),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      _isLoading = true;
+                    });
+
+                    try {
+                      await widget.onSendResponse(_responseController.text);
+                      Navigator.pop(context);
+                    } finally {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+                  },
+            child: const Text('Enviar Respuesta', style: TextStyle(color: Colors.green)),
+          ),
+      ],
     );
   }
 }

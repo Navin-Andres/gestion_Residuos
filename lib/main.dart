@@ -1,3 +1,7 @@
+import 'package:firebase_prueba2/panel_administrativo_screen/create_user_screen.dart';
+import 'package:firebase_prueba2/panel_administrativo_screen/edit_user_screen.dart';
+import 'package:firebase_prueba2/panel_administrativo_screen/educational_content_screen.dart';
+import 'package:firebase_prueba2/panel_administrativo_screen/users_list_screen.dart';
 import 'package:firebase_prueba2/screens/Agregar_contenedor.screen.dart';
 import 'package:firebase_prueba2/screens/admin_panel_screen.dart';
 import 'package:firebase_prueba2/screens/complaint_screen.dart';
@@ -22,9 +26,6 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // Configurar emuladores si es necesario
-    // FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    // FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     runApp(const MyApp());
   } catch (e) {
     print('Error inicializando Firebase: $e en ${DateTime.now()}');
@@ -45,7 +46,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
-        '/map': (context) =>  ContainerMapScreen(),
+        '/map': (context) => ContainerMapScreen(),
         '/complaint': (context) => const ComplaintScreen(),
         '/educational': (context) => EducationalSectionScreen(),
         '/profile': (context) => const UserProfileScreen(),
@@ -54,6 +55,11 @@ class MyApp extends StatelessWidget {
         '/reportes': (context) => const ReportsScreen(),
         '/inbox': (context) => const InboxScreen(),
         '/agregarContenedor': (context) => AgregarContenedorScreen(),
+        '/create_user': (context) => const CreateUserScreen(),
+        '/users_list': (context) => const UsersListScreen(),
+        '/edit_user': (context) => EditUserScreen(arguments: ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {}),
+        '/educational_content': (context) => EducationalContentScreen(),
+        
       },
     );
   }
@@ -74,7 +80,7 @@ class AuthCheck extends StatelessWidget {
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final role = userDoc.data()?['role'] ?? 'usuario';
       print('Rol obtenido: $role para UID=${user.uid} en ${DateTime.now()}');
-      if (role == 'empresa' || role == 'autoridad') {
+      if (role == 'empresa' || role == 'administrador') {
         return '/admin';
       } else if (!userDoc.exists) {
         return '/profile_setup';

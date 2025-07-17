@@ -18,6 +18,13 @@ class _LoginScreenState extends State<LoginScreen> {
   int _selectedIndex = 0;
 
   Future<void> _loginWithEmail() async {
+    if (_selectedIndex != 1) {
+      setState(() {
+        _errorMessage = 'El inicio de sesión con correo solo está disponible para administradores o empresas.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -32,46 +39,77 @@ class _LoginScreenState extends State<LoginScreen> {
       print('Inicio de sesión con email: UID=${user.uid}, Email=${user.email}');
 
       final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-      final userDoc = await userDocRef.get();
+      print('Intentando leer documento: users/${user.uid} en ${DateTime.now()}');
+      DocumentSnapshot userDoc;
+      try {
+        userDoc = await userDocRef.get();
+        print('Documento leído: exists=${userDoc.exists}, data=${userDoc.data()}');
+      } catch (e) {
+        print('Error al leer documento de usuario: $e en ${DateTime.now()}');
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'read-error',
+          message: 'No se pudo leer el documento del usuario: $e',
+        );
+      }
 
       String role;
       if (!userDoc.exists) {
-        role = _selectedIndex == 1 ? 'empresa' : 'usuario';
-        await userDocRef.set({
-          'email': user.email,
-          'displayName': user.displayName ?? user.email?.split('@')[0],
-          'photoURL': user.photoURL,
-          'role': role,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        print('Usuario creado en Firestore: UID=${user.uid}, Rol=$role');
+        role = 'empresa';
+        print('Creando documento para usuario: UID=${user.uid}, Rol=$role');
+        try {
+          await userDocRef.set({
+            'email': user.email,
+            'displayName': user.displayName ?? user.email?.split('@')[0],
+            'photoURL': user.photoURL,
+            'role': role,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastLogin': FieldValue.serverTimestamp(),
+            'preferences': {
+              'notificationsEnabled': true,
+              'language': 'es',
+              'interests': ['reciclaje'],
+            },
+          });
+          print('Usuario creado en Firestore: UID=${user.uid}, Rol=$role');
+        } catch (e) {
+          print('Error al crear documento de usuario: $e en ${DateTime.now()}');
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'write-error',
+            message: 'No se pudo crear el documento del usuario: $e',
+          );
+        }
       } else {
-        role = userDoc.data()?['role'] ?? 'usuario';
+        final data = userDoc.data() as Map<String, dynamic>?;
+        role = data != null && data['role'] is String ? data['role'] : 'usuario';
         print('Rol desde Firestore: $role');
+        // Actualizar lastLogin
+        await userDocRef.update({
+          'lastLogin': FieldValue.serverTimestamp(),
+        });
+        print('lastLogin actualizado para UID=${user.uid} en ${DateTime.now()}');
       }
 
-      if (_selectedIndex == 1) {
-        if (role == 'autoridad' || role == 'empresa') {
-          print('Navegando a AdminPanelScreen');
-          Navigator.pushReplacementNamed(context, '/admin');
-        } else {
-          setState(() {
-            _errorMessage = 'No tienes permisos de autoridad o empresa.';
-          });
-        }
+      if (role == 'administrador' || role == 'empresa') {
+        print('Navegando a AdminPanelScreen');
+        Navigator.pushReplacementNamed(context, '/admin');
       } else {
-        print('Navegando a HomeScreen');
-        if (!userDoc.exists && role == 'usuario') {
-          Navigator.pushReplacementNamed(context, '/profile_setup');
-        } else {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
+        setState(() {
+          _errorMessage = 'No tienes permisos de administrador o empresa.';
+        });
+        print('Error: Rol no permitido para AdminPanelScreen: $role');
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _errorMessage = _mapFirebaseAuthError(e.code);
       });
       print('Error de autenticación: ${e.code}, ${e.message}');
+    } on FirebaseException catch (e) {
+      setState(() {
+        _errorMessage = e.message ?? 'Error en Firestore: ${e.code}';
+      });
+      print('Error en Firestore: ${e.code}, ${e.message}');
     } catch (e) {
       setState(() {
         _errorMessage = 'Error inesperado: $e';
@@ -85,6 +123,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loginWithGoogle() async {
+    if (_selectedIndex == 1) {
+      setState(() {
+        _errorMessage = 'Inicio de sesión con Google solo está disponible para usuarios.';
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -122,40 +168,44 @@ class _LoginScreenState extends State<LoginScreen> {
       await user.updatePhotoURL(user.photoURL);
 
       final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      print('Intentando leer documento: users/${user.uid} en ${DateTime.now()}');
       final userDoc = await userDocRef.get();
+      print('Documento leído: exists=${userDoc.exists}, data=${userDoc.data()}');
       String role;
 
       if (!userDoc.exists) {
-        role = _selectedIndex == 1 ? 'empresa' : 'usuario';
+        role = 'usuario';
+        print('Creando documento para usuario: UID=${user.uid}, Rol=$role');
         await userDocRef.set({
           'email': user.email,
           'displayName': user.displayName ?? user.email?.split('@')[0],
           'photoURL': user.photoURL,
           'role': role,
           'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+          'preferences': {
+            'notificationsEnabled': true,
+            'language': 'es',
+            'interests': ['reciclaje'],
+          },
         });
         print('Usuario creado en Firestore: ${user.uid}, Rol: $role');
       } else {
-        role = userDoc.data()?['role'] ?? 'usuario';
+        final data = userDoc.data() as Map<String, dynamic>?;
+        role = data != null && data['role'] is String ? data['role'] : 'usuario';
         print('Rol de usuario existente: $role');
+        // Actualizar lastLogin
+        await userDocRef.update({
+          'lastLogin': FieldValue.serverTimestamp(),
+        });
+        print('lastLogin actualizado para UID=${user.uid} en ${DateTime.now()}');
       }
 
-      if (_selectedIndex == 1) {
-        if (role == 'autoridad' || role == 'empresa') {
-          print('Navegando a AdminPanelScreen');
-          Navigator.pushReplacementNamed(context, '/admin');
-        } else {
-          setState(() {
-            _errorMessage = 'No tienes permisos de autoridad o empresa.';
-          });
-        }
+      print('Navegando a HomeScreen o ProfileSetupScreen');
+      if (!userDoc.exists && role == 'usuario') {
+        Navigator.pushReplacementNamed(context, '/profile_setup');
       } else {
-        print('Navegando a HomeScreen o ProfileSetupScreen');
-        if (!userDoc.exists && role == 'usuario') {
-          Navigator.pushReplacementNamed(context, '/profile_setup');
-        } else {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       setState(() {
@@ -247,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Icon(Icons.business),
                         SizedBox(width: 8),
-                        Text('Autoridad/Empresa'),
+                        Text('Administrador/Empresa'),
                       ],
                     ),
                   ],
@@ -260,48 +310,46 @@ class _LoginScreenState extends State<LoginScreen> {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
-                        TextField(
-                          controller: _emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Correo electrónico',
-                            prefixIcon: Icon(
-                              _selectedIndex == 0 ? Icons.email : Icons.business,
-                              color: Colors.green,
+                        if (_selectedIndex == 1) ...[
+                          TextField(
+                            controller: _emailController,
+                            decoration: InputDecoration(
+                              labelText: 'Correo electrónico',
+                              prefixIcon: const Icon(Icons.business, color: Colors.green),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            keyboardType: TextInputType.emailAddress,
+                            enabled: !_isLoading,
                           ),
-                          keyboardType: TextInputType.emailAddress,
-                          enabled: !_isLoading,
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Contraseña',
-                            prefixIcon: const Icon(Icons.lock, color: Colors.green),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _passwordController,
+                            decoration: InputDecoration(
+                              labelText: 'Contraseña',
+                              prefixIcon: const Icon(Icons.lock, color: Colors.green),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            obscureText: true,
+                            enabled: !_isLoading,
                           ),
-                          obscureText: true,
-                          enabled: !_isLoading,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: _isLoading ? null : _loginWithEmail,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
-                            minimumSize: const Size(double.infinity, 48),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _loginWithEmail,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                              minimumSize: const Size(double.infinity, 48),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                  )
+                                : const Text('Iniciar Sesión', style: TextStyle(fontSize: 16, color: Colors.white)),
                           ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Text('Iniciar Sesión', style: TextStyle(fontSize: 16, color: Colors.white)),
-                        ),
+                        ],
                         if (_selectedIndex == 0) ...[
-                          const SizedBox(height: 12),
                           ElevatedButton.icon(
                             onPressed: _isLoading ? null : _loginWithGoogle,
                             icon: Image.network(
