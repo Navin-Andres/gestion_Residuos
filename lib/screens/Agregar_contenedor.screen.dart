@@ -42,20 +42,27 @@ class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
 
   Future<void> _loadCustomIcon() async {
     print('Cargando ícono personalizado en ${DateTime.now()}');
+    _iconOperation?.cancel();
     _iconOperation = CancelableOperation.fromFuture(
       BitmapDescriptor.fromAssetImage(
         const ImageConfiguration(size: Size(64, 64)),
         'assets/icons/contenedor_verde.png',
       ).then((icon) {
         if (mounted) {
-          _containerIcon = icon;
+          setState(() {
+            _containerIcon = icon;
+          });
           return _loadContenedoresExistentes();
         }
       }).catchError((e) {
         if (mounted) {
+          print('Error cargando ícono: $e');
           _scaffoldMessenger?.showSnackBar(
-            SnackBar(content: Text('Error cargando ícono: $e')),
+            const SnackBar(content: Text('Error cargando ícono personalizado, usando marcador por defecto.')),
           );
+          setState(() {
+            _containerIcon = null; // Usar marcador por defecto si falla
+          });
         }
       }),
     );

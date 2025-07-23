@@ -12,6 +12,7 @@ import 'package:firebase_prueba2/screens/map_screen.dart';
 import 'package:firebase_prueba2/screens/profile_septup_screen.dart';
 import 'package:firebase_prueba2/screens/reports_screen.dart';
 import 'package:firebase_prueba2/screens/user_profile_screen.dart';
+import 'package:firebase_prueba2/welcome_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -59,6 +60,7 @@ class MyApp extends StatelessWidget {
         '/users_list': (context) => const UsersListScreen(),
         '/edit_user': (context) => EditUserScreen(arguments: ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {}),
         '/educational_content': (context) => EducationalContentScreen(),
+        '/welcome': (context) => const WelcomeScreen(),
         
       },
     );
@@ -72,8 +74,8 @@ class AuthCheck extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     print('Verificando estado de autenticación en ${DateTime.now()}');
     if (user == null) {
-      print('No hay usuario autenticado, redirigiendo a /login');
-      return '/login';
+      print('No hay usuario autenticado, redirigiendo a /welcome');
+      return '/welcome';
     }
     try {
       print('Usuario autenticado: UID=${user.uid}, Email=${user.email}');
@@ -89,7 +91,7 @@ class AuthCheck extends StatelessWidget {
       }
     } catch (e) {
       print('Error al obtener rol: $e en ${DateTime.now()}');
-      return '/login';
+      return '/welcome';
     }
   }
 
@@ -106,9 +108,9 @@ class AuthCheck extends StatelessWidget {
         }
         if (snapshot.hasError) {
           print('Error al determinar ruta inicial: ${snapshot.error} en ${DateTime.now()}');
-          return const LoginScreen();
+          return const WelcomeScreen();
         }
-        final initialRoute = snapshot.data ?? '/login';
+        final initialRoute = snapshot.data ?? '/welcome';
         print('Ruta inicial determinada: $initialRoute en ${DateTime.now()}');
         switch (initialRoute) {
           case '/admin':
@@ -117,9 +119,9 @@ class AuthCheck extends StatelessWidget {
             return const ProfileSetupScreen();
           case '/home':
             return const HomeScreen();
-          case '/login':
+          case '/welcome':
           default:
-            return const LoginScreen();
+            return const WelcomeScreen();
         }
       },
     );

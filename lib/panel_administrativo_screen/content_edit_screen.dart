@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,21 +10,33 @@ import 'package:file_picker/file_picker.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'dart:typed_data';
 
-class ContentUploadScreen extends StatefulWidget {
+class ContentEditScreen extends StatefulWidget {
   final String type; // 'image' o 'video'
-  const ContentUploadScreen({Key? key, required this.type}) : super(key: key);
+  final String documentId; // ID del documento a editar
+  final String currentUrl; // URL actual del archivo
+  final String currentTitle; // Título actual
+  final String currentDescription; // Descripción actual
+
+  const ContentEditScreen({
+    Key? key,
+    required this.type,
+    required this.documentId,
+    required this.currentUrl,
+    required this.currentTitle,
+    required this.currentDescription,
+  }) : super(key: key);
 
   @override
-  _ContentUploadScreenState createState() => _ContentUploadScreenState();
+  _ContentEditScreenState createState() => _ContentEditScreenState();
 }
 
-class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTickerProviderStateMixin {
+class _ContentEditScreenState extends State<ContentEditScreen> with SingleTickerProviderStateMixin {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   File? _imageFile;
   String? _selectedFileName;
   Uint8List? _selectedFileBytes;
-  Uint8List? _thumbnailBytes; // Para previsualización de video
+  Uint8List? _thumbnailBytes;
   bool _isLoading = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -34,6 +47,9 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
   @override
   void initState() {
     super.initState();
+    _titleController.text = widget.currentTitle;
+    _descriptionController.text = widget.currentDescription;
+    _selectedFileName = widget.currentUrl.split('/').last.split('?').first;
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -41,6 +57,9 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
+    if (widget.type == 'video') {
+      _generateVideoThumbnail(null, url: widget.currentUrl);
+    }
     _animationController.forward();
   }
 
@@ -97,11 +116,11 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
     }
   }
 
-  Future<void> _generateVideoThumbnail(Uint8List? bytes, {String? filePath}) async {
+  Future<void> _generateVideoThumbnail(Uint8List? bytes, {String? filePath, String? url}) async {
     if (widget.type != 'video') return;
     try {
       final thumbnail = await VideoThumbnail.thumbnailData(
-        video: filePath ?? '',
+        video: url ?? filePath ?? '',
         imageFormat: ImageFormat.PNG,
         maxWidth: 120,
         quality: 25,
@@ -119,107 +138,65 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
     }
   }
 
-  Future<bool> _ensureAdminRole(User user) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      print('Verificando rol para usuario ${user.uid}: ${userDoc.data()?['role']}');
-      if (!userDoc.exists) {
-        print('Creando nuevo documento para ${user.uid} con rol administrador');
-        await _firestore.collection('users').doc(user.uid).set({
-          'role': 'administrador',
-          'createdAt': Timestamp.now(),
-        });
-        await Future.delayed(Duration(seconds: 1)); // Retraso para propagación
-      } else if (userDoc.data()?['role'] != 'administrador') {
-        print('Actualizando rol a administrador para ${user.uid}');
-        await _firestore.collection('users').doc(user.uid).update({'role': 'administrador'});
-        await Future.delayed(Duration(seconds: 1)); // Retraso para propagación
-      }
-      await user.getIdToken(true); // Actualizar token
-      final updatedDoc = await _firestore.collection('users').doc(user.uid).get();
-      final updatedRole = updatedDoc.data()?['role'];
-      print('Rol actualizado: $updatedRole');
-      return updatedRole == 'administrador';
-    } catch (e) {
-      print('Error al asegurar rol de administrador: $e');
-      return false;
-    }
-  }
-
-  Future<void> _uploadContent() async {
+  Future<void> _updateContent() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      try {
-        await FirebaseAuth.instance.signInAnonymously();
-        user = FirebaseAuth.instance.currentUser;
-        print('Usuario anónimo creado: ${user?.uid}, Es anónimo: ${user?.isAnonymous}');
-      } catch (e) {
-        _showSnackBar('Error al autenticar anónimamente: $e');
-        setState(() => _isLoading = false);
-        return;
-      }
-    }
-    print('Usuario autenticado: ${user?.uid}, Token: ${await user?.getIdToken()}');
-
-    if (!await _ensureAdminRole(user!)) {
-      _showSnackBar('Solo administradores pueden subir contenido. Rol actual: ${await _getUserRole(user.uid)}');
-      setState(() => _isLoading = false);
-      return;
-    }
-
-    if (_imageFile == null && _selectedFileBytes == null) {
-      _showSnackBar('Por favor, selecciona un archivo.');
+      _showSnackBar('Usuario no autenticado.', isError: true);
       setState(() => _isLoading = false);
       return;
     }
 
     if (_titleController.text.trim().isEmpty) {
-      _showSnackBar('Por favor, ingresa un título.');
+      _showSnackBar('Por favor, ingresa un título.', isError: true);
       setState(() => _isLoading = false);
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      String filePath = widget.type == 'image'
-          ? 'educational_content_images/${DateTime.now().millisecondsSinceEpoch}_${_selectedFileName}'
-          : 'educational_content_videos/${DateTime.now().millisecondsSinceEpoch}_${_selectedFileName}';
-      UploadTask uploadTask;
-      if (kIsWeb) {
-        uploadTask = _storage.ref(filePath).putData(_selectedFileBytes!);
-      } else {
-        uploadTask = _storage.ref(filePath).putFile(_imageFile!);
-      }
+      String? downloadUrl = widget.currentUrl;
+      if (_imageFile != null || _selectedFileBytes != null) {
+        // Eliminar el archivo anterior
+        try {
+          await _storage.refFromURL(widget.currentUrl).delete();
+          print('Archivo anterior eliminado: ${widget.currentUrl}');
+        } catch (e) {
+          print('Error al eliminar archivo anterior: $e');
+        }
 
-      print('Iniciando subida a $filePath');
-      final snapshot = await uploadTask.whenComplete(() {});
-      final downloadUrl = await snapshot.ref.getDownloadURL();
-      print('URL de descarga obtenida: $downloadUrl');
+        // Subir nuevo archivo
+        String filePath = widget.type == 'image'
+            ? 'educational_content_images/${DateTime.now().millisecondsSinceEpoch}_${_selectedFileName}'
+            : 'educational_content_videos/${DateTime.now().millisecondsSinceEpoch}_${_selectedFileName}';
+        UploadTask uploadTask;
+        if (kIsWeb) {
+          uploadTask = _storage.ref(filePath).putData(_selectedFileBytes!);
+        } else {
+          uploadTask = _storage.ref(filePath).putFile(_imageFile!);
+        }
+
+        print('Iniciando subida a $filePath');
+        final snapshot = await uploadTask.whenComplete(() {});
+        downloadUrl = await snapshot.ref.getDownloadURL();
+        print('URL de descarga obtenida: $downloadUrl');
+      }
 
       final firestoreSubCollection = widget.type == 'image' ? 'image' : 'video';
-      print('Verificando existencia de $firestoreSubCollection en educational_content');
-      final typeDocRef = _firestore.collection('educational_content').doc(firestoreSubCollection);
-      final typeDoc = await typeDocRef.get();
-      if (!typeDoc.exists) {
-        print('Creando documento $firestoreSubCollection en educational_content');
-        await typeDocRef.set({'type': firestoreSubCollection});
-      }
+      final docRef = _firestore
+          .collection('educational_content')
+          .doc(firestoreSubCollection)
+          .collection('items')
+          .doc(widget.documentId);
 
-      print('Intentando guardar en Firestore: educational_content/$firestoreSubCollection/items');
-      final collectionRef = typeDocRef.collection('items');
-      final docRef = await collectionRef.add({
+      await docRef.update({
         'titulo': _titleController.text.trim(),
         'descripcion': _descriptionController.text.trim(),
-        'tipo': widget.type,
         'url': downloadUrl,
-        'createdAt': Timestamp.now(),
-        'userId': user.uid,
+        'updatedAt': Timestamp.now(),
       });
-      print('Documento guardado exitosamente en Firestore con ID: ${docRef.id}');
+      print('Documento actualizado en Firestore con ID: ${widget.documentId}');
 
-      _showSnackBar('Contenido subido exitosamente.', isSuccess: true);
-      _titleController.clear();
-      _descriptionController.clear();
+      _showSnackBar('Contenido actualizado exitosamente.', isSuccess: true);
       setState(() {
         _imageFile = null;
         _selectedFileBytes = null;
@@ -227,20 +204,13 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
         _thumbnailBytes = null;
         _isLoading = false;
       });
-      _animationController.forward(from: 0.0); // Reiniciar animación
+      _animationController.forward(from: 0.0);
+      Navigator.pop(context); // Regresar tras actualizar
     } catch (e) {
-      print('Error completo al subir contenido: $e');
-      if (e is FirebaseException) {
-        print('Error de Firebase: ${e.code} - ${e.message}');
-      }
-      _showSnackBar('Error al subir contenido: $e', isError: true);
+      print('Error al actualizar contenido: $e');
+      _showSnackBar('Error al actualizar contenido: $e', isError: true);
       setState(() => _isLoading = false);
     }
-  }
-
-  Future<String> _getUserRole(String uid) async {
-    final userDoc = await _firestore.collection('users').doc(uid).get();
-    return userDoc.data()?['role'] ?? 'sin rol';
   }
 
   void _showSnackBar(String message, {bool isSuccess = false, bool isError = false}) {
@@ -267,19 +237,74 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
 
   Widget _buildFilePreview() {
     if (_imageFile == null && _selectedFileBytes == null) {
-      return Container(
-        height: 120,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Icon(
-            widget.type == 'image' ? Icons.image : Icons.videocam,
-            size: 48,
-            color: Colors.grey.shade500,
-          ),
-        ),
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: widget.type == 'image'
+            ? CachedNetworkImage(
+                imageUrl: widget.currentUrl,
+                height: 120,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    image: const DecorationImage(
+                      image: AssetImage('assets/images/image_placeholder.png'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.image_not_supported, color: Colors.grey, size: 48),
+                  ),
+                ),
+              )
+            : _thumbnailBytes != null
+                ? Stack(
+                    children: [
+                      Image.memory(
+                        _thumbnailBytes!,
+                        height: 120,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_circle_fill,
+                              color: Colors.white,
+                              size: 36,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Container(
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/video_placeholder.png'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
+                    ),
+                  ),
       );
     }
 
@@ -296,7 +321,10 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                   height: 120,
                   decoration: BoxDecoration(
                     color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(12),
+                    image: const DecorationImage(
+                      image: AssetImage('assets/images/image_placeholder.png'),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                   child: const Center(
                     child: Icon(Icons.image_not_supported, color: Colors.grey, size: 48),
@@ -312,7 +340,10 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                   height: 120,
                   decoration: BoxDecoration(
                     color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(12),
+                    image: const DecorationImage(
+                      image: AssetImage('assets/images/image_placeholder.png'),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                   child: const Center(
                     child: Icon(Icons.image_not_supported, color: Colors.grey, size: 48),
@@ -353,11 +384,13 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                 height: 120,
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
+                  image: const DecorationImage(
+                    image: AssetImage('assets/images/video_placeholder.png'),
+                    fit: BoxFit.cover,
+                  ),
                 ),
                 child: const Center(
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                   ),
                 ),
@@ -380,7 +413,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          widget.type == 'image' ? 'Subir Imagen' : 'Subir Video',
+          widget.type == 'image' ? 'Editar Imagen' : 'Editar Video',
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -398,7 +431,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -503,7 +536,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                               CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
                             ),
                             child: ElevatedButton(
-                              onPressed: _isLoading ? null : _uploadContent,
+                              onPressed: _isLoading ? null : _updateContent,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green.shade600,
                                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
@@ -513,7 +546,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                                 elevation: 4,
                               ),
                               child: Text(
-                                'Subir ${widget.type == 'image' ? 'Imagen' : 'Video'}',
+                                'Actualizar ${widget.type == 'image' ? 'Imagen' : 'Video'}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,

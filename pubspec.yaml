@@ -52,10 +52,16 @@ dependencies:
   google_maps_webservice: ^0.0.19
   url_launcher: ^6.2.5
   async: ^2.11.0
-  video_player: ^2.8.2  # Para reproducir videos
-  chewie: ^1.7.3       # Interfaz de reproductor de video
+  video_player: ^2.9.1
+  chewie: ^1.8.0  # Si usas Chewie      # Interfaz de reproductor de video
   photo_view: ^0.15.0 
   flutter_svg: ^2.0.9
+  path_provider: ^2.1.1
+  file_picker: ^8.0.6
+  rxdart: ^0.27.0
+  video_thumbnail: ^0.5.3
+  
+  
    # Para zoom en imágenes
   
   
@@ -97,7 +103,12 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+   - assets/arbol.png
+   - assets/rio_gutapuri.jpg
    - assets/icons/contenedor_verde.png
+   - assets/video_placeholder.png
+   - assets/image_placeholder.png
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

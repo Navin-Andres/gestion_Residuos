@@ -31,8 +31,8 @@ class AdminPanelScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Panel Administrativo', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.green[700],
+        title: const Text('Panel Administrativo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1E4066), // Dark blue from image
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -41,7 +41,7 @@ class AdminPanelScreen extends StatelessWidget {
           future: _getUserData(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
             }
             final userData = snapshot.data ?? {'role': '', 'name': 'Administrador Desconocido'};
             final userRole = userData['role'] ?? '';
@@ -50,8 +50,8 @@ class AdminPanelScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
                 DrawerHeader(
-                  decoration: BoxDecoration(
-                    color: Colors.green[700],
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1E4066), // Dark blue
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +59,7 @@ class AdminPanelScreen extends StatelessWidget {
                       CircleAvatar(
                         radius: 40,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.business, size: 50, color: Colors.green[700]),
+                        child: Icon(Icons.business, size: 50, color: const Color(0xFF1E4066)),
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -81,16 +81,16 @@ class AdminPanelScreen extends StatelessWidget {
                   ),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.person, color: Colors.green),
-                  title: const Text('Perfil de Empresa'),
+                  leading: const Icon(Icons.person, color: Color(0xFF4CAF50)),
+                  title: const Text('Perfil de Empresa', style: TextStyle(fontSize: 16)),
                   onTap: () {
                     Navigator.pop(context);
                   },
                 ),
                 if (userRole == 'administrador')
                   ListTile(
-                    leading: const Icon(Icons.group, color: Colors.green),
-                    title: const Text('Lista de Usuarios'),
+                    leading: const Icon(Icons.group, color: Color(0xFF4CAF50)),
+                    title: const Text('Lista de Usuarios', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.pushNamed(context, '/users_list');
@@ -98,16 +98,16 @@ class AdminPanelScreen extends StatelessWidget {
                   ),
                 if (userRole == 'administrador')
                   ListTile(
-                    leading: const Icon(Icons.school, color: Colors.green),
-                    title: const Text('Secciones Educativas'),
+                    leading: const Icon(Icons.school, color: Color(0xFF4CAF50)),
+                    title: const Text('Secciones Educativas', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.pushNamed(context, '/educational_content');
                     },
                   ),
                 ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.green),
-                  title: const Text('Cerrar Sesión'),
+                  leading: const Icon(Icons.logout, color: Color(0xFF4CAF50)),
+                  title: const Text('Cerrar Sesión', style: TextStyle(fontSize: 16)),
                   onTap: () async {
                     await _signOut(context);
                   },
@@ -118,9 +118,9 @@ class AdminPanelScreen extends StatelessWidget {
         ),
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.green[100]!, Colors.white],
+            colors: [Color(0xFFECF0F5), Color(0xFFFFFFFF)], // Light blue to white
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -131,7 +131,7 @@ class AdminPanelScreen extends StatelessWidget {
             future: _getUserData(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
               }
               final userRole = snapshot.data?['role'] ?? '';
               return GridView.count(
@@ -184,23 +184,24 @@ class AdminPanelScreen extends StatelessWidget {
 
   Widget _buildGridButton(BuildContext context, {required IconData icon, required String label, required String route}) {
     return Card(
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      elevation: 10,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: const Color(0xFFD9E6F2), // Light blue for cards
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(context, route);
         },
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: Colors.green[700]),
-            const SizedBox(height: 10),
+            Icon(icon, size: 45, color: const Color(0xFF00A884)), // Teal from image
+            const SizedBox(height: 12),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.green[700],
+              style: const TextStyle(
+                fontSize: 16,
+                color: Color(0xFF00A884), // Teal
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
