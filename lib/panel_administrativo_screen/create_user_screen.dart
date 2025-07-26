@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class CreateUserScreen extends StatefulWidget {
   const CreateUserScreen({super.key});
@@ -19,6 +20,25 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
   String? _selectedRole = 'empresa';
   String? _errorMessage;
   bool _isLoading = false;
+  FirebaseApp? _secondaryApp;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeSecondaryApp();
+  }
+
+  Future<void> _initializeSecondaryApp() async {
+    try {
+      _secondaryApp = await Firebase.initializeApp(
+        name: 'SecondaryApp',
+        options: Firebase.app().options,
+      );
+      print('Secondary Firebase app initialized');
+    } catch (e) {
+      print('Error initializing secondary Firebase app: $e');
+    }
+  }
 
   Future<void> _createUser() async {
     if (!_formKey.currentState!.validate()) return;
@@ -30,7 +50,8 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
 
     try {
       print('Intentando crear usuario con email: ${_emailController.text}');
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final secondaryAuth = FirebaseAuth.instanceFor(app: _secondaryApp!);
+      final userCredential = await secondaryAuth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
@@ -48,10 +69,13 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
       });
       print('Documento creado en Firestore: UID=${user.uid}, Rol=$_selectedRole');
 
+      // Cerrar sesión en la instancia secundaria para no afectar la sesión principal
+      await secondaryAuth.signOut();
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Usuario creado exitosamente')),
       );
-      Navigator.pushReplacementNamed(context, '/users_list');
+      Navigator.pop(context); // Regresar a la pantalla anterior
     } on FirebaseAuthException catch (e) {
       print('Error de autenticación detallado: ${e.code}, ${e.message}, StackTrace: ${e.stackTrace}');
       setState(() {
@@ -222,7 +246,7 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    onPressed: _isLoading ? null : _createUser,
+                    onPressed: _isLoading || _secondaryApp == null ? null : _createUser,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green[700],
                       minimumSize: const Size(double.infinity, 48),
@@ -261,6 +285,7 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _secondaryApp?.delete(); // Eliminar la instancia secundaria al salir
     super.dispose();
   }
 }
