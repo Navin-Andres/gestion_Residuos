@@ -1,7 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_prueba2/screens/Registro_perfil_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_login_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -40,7 +43,18 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = userCredential.user!;
       print('Inicio de sesión con Google: UID=${user.uid}, Email=${user.email}, Nombre=${user.displayName}');
 
-      Navigator.pushReplacementNamed(context, '/home');
+      // Verificar si el usuario tiene un perfil en Firestore
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        // Si no existe perfil, redirigir a ProfileSetupScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
+        );
+      } else {
+        // Si existe perfil, redirigir a la pantalla de inicio
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Error al iniciar sesión con Google: $e';

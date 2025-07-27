@@ -9,7 +9,7 @@ import 'package:firebase_prueba2/screens/container_map_screen.dart';
 import 'package:firebase_prueba2/screens/educational_section_screen.dart' show EducationalSectionScreen;
 import 'package:firebase_prueba2/screens/inbox_screen.dart';
 import 'package:firebase_prueba2/screens/map_screen.dart';
-import 'package:firebase_prueba2/screens/profile_septup_screen.dart';
+import 'package:firebase_prueba2/screens/Registro_perfil_screen.dart';
 import 'package:firebase_prueba2/screens/reports_screen.dart';
 import 'package:firebase_prueba2/screens/user_profile_screen.dart';
 import 'package:firebase_prueba2/welcome_screen.dart';
