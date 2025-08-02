@@ -1,10 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ImageViewerScreen extends StatefulWidget {
   final String imageUrl;
-  final String documentId; // Nuevo: ID del documento para obtener detalles
+  final String documentId;
 
   const ImageViewerScreen({Key? key, required this.imageUrl, required this.documentId}) : super(key: key);
 
@@ -44,6 +46,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> with SingleTicker
         setState(() {
           _contentData = doc.data();
         });
+        print('Documento completo: ${doc.data()}');
+        print('Descripción obtenida: ${_contentData?['descripcion']}');
         if (_contentData?['userId'] != null) {
           final userDoc = await FirebaseFirestore.instance
               .collection('users')
@@ -55,6 +59,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> with SingleTicker
         }
       } else {
         _showSnackBar('No se encontró el contenido.');
+        print('Error: Documento no encontrado para ID: ${widget.documentId}');
       }
     } catch (e) {
       print('Error al obtener datos del contenido: $e');
@@ -70,7 +75,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> with SingleTicker
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: Colors.red.shade600,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'OK',
           textColor: Colors.white,
@@ -95,6 +100,126 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> with SingleTicker
     } else {
       return 'Ahora mismo';
     }
+  }
+
+  // Función para construir el texto con URLs clicables
+  Widget _buildDescriptionText(String description) {
+    if (description.isEmpty) {
+      print('Descripción vacía');
+      return const Text(
+        'Sin descripción',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey,
+        ),
+      );
+    }
+
+    final urlPattern = RegExp(
+      r'(https?:\/\/[^\s]+)|(www\.[^\s]+)',
+      caseSensitive: false,
+    );
+    final matches = urlPattern.allMatches(description);
+    final spans = <TextSpan>[];
+
+    if (matches.isEmpty) {
+      print('No se encontraron URLs en: "$description"');
+      return Text(
+        description,
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey.shade600,
+        ),
+      );
+    }
+
+    int lastMatchEnd = 0;
+    for (var match in matches) {
+      final matchStart = match.start;
+      final matchEnd = match.end;
+      final matchText = description.substring(matchStart, matchEnd);
+
+      // Añadir el texto antes de la URL
+      if (matchStart > lastMatchEnd) {
+        spans.add(
+          TextSpan(
+            text: description.substring(lastMatchEnd, matchStart),
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        );
+      }
+
+      // Normalizar y codificar la URL
+      final url = matchText.startsWith('www.') ? 'https://$matchText' : matchText;
+      String encodedUrl;
+      try {
+        encodedUrl = Uri.encodeFull(url);
+        print('URL detectada: $url (codificada: $encodedUrl)');
+      } catch (e) {
+        print('Error al codificar URL: $url ($e)');
+        _showSnackBar('URL inválida: $matchText');
+        spans.add(
+          TextSpan(
+            text: matchText,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        );
+        lastMatchEnd = matchEnd;
+        continue;
+      }
+
+      // Añadir la URL como enlace clicable
+      spans.add(
+        TextSpan(
+          text: matchText,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Colors.blue,
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.w500,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              try {
+                final uri = Uri.parse(encodedUrl);
+                print('Intentando abrir URL en inAppWebView: $uri');
+                await launchUrl(uri, mode: LaunchMode.inAppWebView);
+                print('URL abierta exitosamente: $uri');
+              } catch (e) {
+                _showSnackBar('Error al abrir el enlace: $matchText ($e)');
+                print('Excepción al abrir $encodedUrl: $e');
+              }
+            },
+        ),
+      );
+
+      lastMatchEnd = matchEnd;
+    }
+
+    // Añadir el texto restante después de la última URL
+    if (lastMatchEnd < description.length) {
+      spans.add(
+        TextSpan(
+          text: description.substring(lastMatchEnd),
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(
+        children: spans,
+      ),
+    );
   }
 
   @override
@@ -182,12 +307,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> with SingleTicker
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
+                        _buildDescriptionText(
                           _contentData!['descripcion'] ?? 'Sin descripción',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
                         ),
                         const SizedBox(height: 8),
                         Row(

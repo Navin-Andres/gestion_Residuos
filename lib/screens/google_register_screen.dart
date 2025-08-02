@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
-class ProfileSetupScreen extends StatefulWidget {
-  const ProfileSetupScreen({super.key});
+class GoogleRegisterScreen extends StatefulWidget {
+  const GoogleRegisterScreen({super.key});
 
   @override
-  _ProfileSetupScreenState createState() => _ProfileSetupScreenState();
+  _GoogleRegisterScreenState createState() => _GoogleRegisterScreenState();
 }
 
-class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTickerProviderStateMixin {
+class _GoogleRegisterScreenState extends State<GoogleRegisterScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _idNumberController = TextEditingController();
@@ -33,28 +34,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
     );
     _animationController.forward();
 
-    // Prellenar campos con datos existentes del usuario, si los hay
+    // Prellenar nombre con datos de Google si están disponibles
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
-        if (doc.exists && mounted) {
-          final data = doc.data();
-          setState(() {
-            _fullNameController.text = data?['displayName'] ?? user.displayName ?? '';
-            _phoneController.text = data?['phone'] ?? '';
-            _idNumberController.text = data?['idNumber'] ?? '';
-            _cityController.text = data?['location']?['city'] ?? '';
-            _neighborhoodController.text = data?['location']?['neighborhood'] ?? '';
-          });
-          print('Datos prellenados para UID=${user.uid}: ${doc.data()} en ${DateTime.now()}');
-        }
-      }).catchError((e) {
-        print('Error al prellenar datos: $e en ${DateTime.now()}');
+      setState(() {
+        _fullNameController.text = user.displayName ?? '';
       });
     }
   }
 
-  Future<void> _saveProfile() async {
+  Future<void> _registerWithGoogle() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -62,16 +51,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
       });
 
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
+        // Iniciar sesión con Google
+        final googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) {
           setState(() {
-            _errorMessage = 'No hay usuario autenticado.';
+            _errorMessage = 'Registro con Google cancelado.';
             _isLoading = false;
           });
-          print('No hay usuario autenticado en ${DateTime.now()}');
           return;
         }
 
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        final user = userCredential.user!;
+        print('Usuario registrado con Google: UID=${user.uid}, Email=${user.email}, Nombre=${user.displayName}');
+
+        // Guardar datos del perfil en Firestore
         final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
         await userDocRef.set({
           'displayName': _fullNameController.text.trim(),
@@ -97,12 +97,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
           'idNumber': _idNumberController.text.trim(),
           'location': {'city': _cityController.text.trim(), 'neighborhood': _neighborhoodController.text.trim()},
           'preferences': {'notificationsEnabled': true, 'language': 'es'},
-        }} en ${DateTime.now()}');
+        }}');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Perfil guardado exitosamente'),
+              content: const Text('Registro exitoso'),
               backgroundColor: Colors.green.shade700,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -113,7 +113,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
       } catch (e) {
         if (mounted) {
           setState(() {
-            _errorMessage = 'Error al guardar perfil: $e';
+            _errorMessage = 'Error al registrar con Google: $e';
             _isLoading = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
@@ -125,7 +125,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
             ),
           );
         }
-        print('Error al guardar perfil: $e en ${DateTime.now()}');
+        print('Error al registrar con Google: $e');
       }
     }
   }
@@ -175,7 +175,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Completar Perfil', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Registro con Google', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -231,7 +231,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
                                 ),
                               ),
                               const Text(
-                                'Configura tu perfil',
+                                'Completa tu perfil',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Colors.grey,
@@ -288,31 +288,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 300),
                                 curve: Curves.easeInOut,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _saveProfile,
+                                child: ElevatedButton.icon(
+                                  onPressed: _isLoading ? null : _registerWithGoogle,
+                                  icon: Image.network(
+                                    'https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png',
+                                    height: 24,
+                                    width: 24,
+                                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
+                                  ),
+                                  label: const Text(
+                                    'Registrar con Google',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade700,
                                     padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     elevation: 4,
                                   ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'Guardar Perfil',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
                                 ),
                               ),
                             ],

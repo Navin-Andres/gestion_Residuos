@@ -1,10 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_prueba2/screens/Registro_perfil_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_login_screen.dart';
-
+import 'profile_register_screen.dart';
+import 'google_register_screen.dart';
+import 'password_reset_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,8 +15,37 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   String? _errorMessage;
   bool _isLoading = false;
+
+  Future<void> _loginWithEmailPassword() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      final user = userCredential.user!;
+      print('Inicio de sesión con email: UID=${user.uid}, Email=${user.email}');
+
+      Navigator.pushReplacementNamed(context, '/home');
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al iniciar sesión: $e';
+      });
+      print('Error en inicio de sesión con email: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   Future<void> _loginWithGoogle() async {
     setState(() {
@@ -43,17 +73,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = userCredential.user!;
       print('Inicio de sesión con Google: UID=${user.uid}, Email=${user.email}, Nombre=${user.displayName}');
 
-      // Verificar si el usuario tiene un perfil en Firestore
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        // Si no existe perfil, redirigir a ProfileSetupScreen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
-        );
-      } else {
-        // Si existe perfil, redirigir a la pantalla de inicio
-        Navigator.pushReplacementNamed(context, '/home');
+      // Verificar si el usuario ya tiene un perfil en Firestore
+      final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final userDoc = await userDocRef.get();
+
+      if (mounted) {
+        if (userDoc.exists) {
+          // Usuario existente, navegar a /home
+          print('Usuario existente encontrado: UID=${user.uid}');
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          // Usuario nuevo, navegar a GoogleRegisterScreen
+          print('Usuario nuevo, redirigiendo a pantalla de registro: UID=${user.uid}');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const GoogleRegisterScreen()),
+          );
+        }
       }
     } catch (e) {
       setState(() {
@@ -65,6 +101,13 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -82,13 +125,14 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.all(12.0),
             child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 12,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 8,
               color: Colors.white.withOpacity(0.9),
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.all(12.0),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 300),
                   child: Column(
@@ -96,19 +140,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Image.asset(
                         'assets/arbol.png',
-                        height: 80,
-                        width: 80,
+                        height: 50,
+                        width: 50,
                         errorBuilder: (context, error, stackTrace) => const Icon(
                           Icons.eco,
-                          size: 80,
+                          size: 50,
                           color: Colors.green,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 6),
                       const Text(
                         'Ecovalle',
                         style: TextStyle(
-                          fontSize: 32,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.green,
                         ),
@@ -116,36 +160,134 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text(
                         'Gestión de Residuos',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 14,
                           color: Colors.grey,
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _emailController,
+                        decoration: InputDecoration(
+                          labelText: 'Correo Electrónico',
+                          labelStyle: TextStyle(color: Colors.green.shade700, fontSize: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.green.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                          ),
+                          prefixIcon: Icon(Icons.email, color: Colors.green.shade700),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.9),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Contraseña',
+                          labelStyle: TextStyle(color: Colors.green.shade700, fontSize: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.green.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                          ),
+                          prefixIcon: Icon(Icons.lock, color: Colors.green.shade700),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.9),
+                        ),
+                        obscureText: true,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const PasswordResetScreen()),
+                                  );
+                                },
+                          child: const Text(
+                            '¿Se te olvidó la contraseña?',
+                            style: TextStyle(color: Colors.green, fontSize: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _loginWithEmailPassword,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          minimumSize: const Size(double.infinity, 40),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 3,
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Iniciar Sesión',
+                                style: TextStyle(fontSize: 14, color: Colors.white),
+                              ),
+                      ),
+                      const SizedBox(height: 8),
                       ElevatedButton.icon(
                         onPressed: _isLoading ? null : _loginWithGoogle,
-                        icon: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png',
-                          height: 24,
-                          width: 24,
+                        icon: Image.asset(
+                          'assets/icons/google.png', // Cambiado de Image.network a Image.asset
+                          height: 18,
+                          width: 18,
                           errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
                         ),
                         label: const Text(
                           'Iniciar Sesión con Google',
-                          style: TextStyle(fontSize: 16, color: Colors.green),
+                          style: TextStyle(fontSize: 14, color: Colors.green),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
-                          minimumSize: const Size(double.infinity, 48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 4,
+                          minimumSize: const Size(double.infinity, 40),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const ProfileRegisterScreen()),
+                                );
+                              },
+                        child: const Text(
+                          '¿No tienes cuenta? Regístrate',
+                          style: TextStyle(color: Colors.green, fontSize: 14),
                         ),
                       ),
                       if (_errorMessage != null)
                         Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.only(top: 8),
                           child: Text(
                             _errorMessage!,
-                            style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+                            style: TextStyle(color: Colors.red.shade700, fontSize: 12),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -166,14 +308,9 @@ class _LoginScreenState extends State<LoginScreen> {
         },
         backgroundColor: Colors.green,
         child: const Icon(Icons.admin_panel_settings),
-        elevation: 8,
+        elevation: 6,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

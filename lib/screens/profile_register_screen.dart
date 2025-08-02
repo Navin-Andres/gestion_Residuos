@@ -1,15 +1,15 @@
+import 'package:firebase_prueba2/screens/email_credential_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'google_register_screen.dart';
 
-class ProfileSetupScreen extends StatefulWidget {
-  const ProfileSetupScreen({super.key});
+class ProfileRegisterScreen extends StatefulWidget {
+  const ProfileRegisterScreen({super.key});
 
   @override
-  _ProfileSetupScreenState createState() => _ProfileSetupScreenState();
+  _ProfileRegisterScreenState createState() => _ProfileRegisterScreenState();
 }
 
-class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTickerProviderStateMixin {
+class _ProfileRegisterScreenState extends State<ProfileRegisterScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _idNumberController = TextEditingController();
@@ -32,101 +32,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
-
-    // Prellenar campos con datos existentes del usuario, si los hay
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
-        if (doc.exists && mounted) {
-          final data = doc.data();
-          setState(() {
-            _fullNameController.text = data?['displayName'] ?? user.displayName ?? '';
-            _phoneController.text = data?['phone'] ?? '';
-            _idNumberController.text = data?['idNumber'] ?? '';
-            _cityController.text = data?['location']?['city'] ?? '';
-            _neighborhoodController.text = data?['location']?['neighborhood'] ?? '';
-          });
-          print('Datos prellenados para UID=${user.uid}: ${doc.data()} en ${DateTime.now()}');
-        }
-      }).catchError((e) {
-        print('Error al prellenar datos: $e en ${DateTime.now()}');
-      });
-    }
   }
 
-  Future<void> _saveProfile() async {
+  void _continueToEmail() {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
-          setState(() {
-            _errorMessage = 'No hay usuario autenticado.';
-            _isLoading = false;
-          });
-          print('No hay usuario autenticado en ${DateTime.now()}');
-          return;
-        }
-
-        final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        await userDocRef.set({
-          'displayName': _fullNameController.text.trim(),
-          'phone': _phoneController.text.trim(),
-          'idNumber': _idNumberController.text.trim(),
-          'role': 'usuario',
-          'email': user.email,
-          'photoURL': user.photoURL,
-          'updatedAt': FieldValue.serverTimestamp(),
-          'location': {
-            'city': _cityController.text.trim(),
-            'neighborhood': _neighborhoodController.text.trim(),
-          },
-          'preferences': {
-            'notificationsEnabled': true,
-            'language': 'es',
-          },
-        }, SetOptions(merge: true));
-
-        print('Perfil guardado para UID=${user.uid}: ${{
-          'displayName': _fullNameController.text.trim(),
-          'phone': _phoneController.text.trim(),
-          'idNumber': _idNumberController.text.trim(),
-          'location': {'city': _cityController.text.trim(), 'neighborhood': _neighborhoodController.text.trim()},
-          'preferences': {'notificationsEnabled': true, 'language': 'es'},
-        }} en ${DateTime.now()}');
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Perfil guardado exitosamente'),
-              backgroundColor: Colors.green.shade700,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Error al guardar perfil: $e';
-            _isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red.shade700,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        }
-        print('Error al guardar perfil: $e en ${DateTime.now()}');
-      }
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EmailCredentialsScreen(
+            profileData: {
+              'displayName': _fullNameController.text.trim(),
+              'idNumber': _idNumberController.text.trim(),
+              'phone': _phoneController.text.trim(),
+              'city': _cityController.text.trim(),
+              'neighborhood': _neighborhoodController.text.trim(),
+            },
+          ),
+        ),
+      );
     }
   }
 
@@ -175,7 +98,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Completar Perfil', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Registro', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green.shade700,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -275,6 +198,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
                                 validator: (value) => value!.isEmpty ? 'Ingrese el barrio' : null,
                                 hintText: 'Ej. Centro',
                               ),
+                              const SizedBox(height: 16),
+                              TextButton(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => const GoogleRegisterScreen()),
+                                        );
+                                      },
+                                child: const Text(
+                                  'O regístrate con Google',
+                                  style: TextStyle(color: Colors.green, fontSize: 14),
+                                ),
+                              ),
                               if (_errorMessage != null)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 16),
@@ -289,7 +227,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
                                 duration: const Duration(milliseconds: 300),
                                 curve: Curves.easeInOut,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _saveProfile,
+                                  onPressed: _isLoading ? null : _continueToEmail,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade700,
                                     padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
@@ -306,7 +244,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> with SingleTick
                                           ),
                                         )
                                       : const Text(
-                                          'Guardar Perfil',
+                                          'Continuar',
                                           style: TextStyle(
                                             color: Colors.white,
                                             fontSize: 16,

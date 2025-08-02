@@ -146,6 +146,21 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
     }
   }
 
+  // Basic URL validation function
+  bool _isValidUrl(String text) {
+    final urlPattern = RegExp(
+      r'^(https?:\/\/)?([\w-]+(\.[\w-]+)+)([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?$',
+      caseSensitive: false,
+    );
+    final urls = text.split(' ').where((word) => word.startsWith('http')).toList();
+    for (var url in urls) {
+      if (!urlPattern.hasMatch(url)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _uploadContent() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -175,6 +190,13 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
 
     if (_titleController.text.trim().isEmpty) {
       _showSnackBar('Por favor, ingresa un título.');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final description = _descriptionController.text.trim();
+    if (description.isNotEmpty && !_isValidUrl(description)) {
+      _showSnackBar('Por favor, ingresa URLs válidas en la descripción.');
       setState(() => _isLoading = false);
       return;
     }
@@ -209,7 +231,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
       final collectionRef = typeDocRef.collection('items');
       final docRef = await collectionRef.add({
         'titulo': _titleController.text.trim(),
-        'descripcion': _descriptionController.text.trim(),
+        'descripcion': description, // Store raw description with URLs
         'tipo': widget.type,
         'url': downloadUrl,
         'createdAt': Timestamp.now(),
@@ -434,7 +456,7 @@ class _ContentUploadScreenState extends State<ContentUploadScreen> with SingleTi
                       controller: _descriptionController,
                       decoration: InputDecoration(
                         labelText: 'Descripción',
-                        hintText: 'Describe el contenido',
+                        hintText: 'Describe el contenido (puedes incluir enlaces como https://example.com)',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.green.shade300),
