@@ -16,7 +16,7 @@ class ComplaintScreen extends StatefulWidget {
   _ComplaintScreenState createState() => _ComplaintScreenState();
 }
 
-class _ComplaintScreenState extends State<ComplaintScreen> {
+class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _controllers = {
     'description': TextEditingController(),
@@ -27,10 +27,20 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
   dynamic selectedImage;
   bool isLoading = false;
   String? userRole;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _animationController.forward();
     _fetchUserRole();
   }
 
@@ -48,14 +58,24 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
       });
       if (userRole != 'usuario') {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Solo los usuarios pueden registrar quejas desde esta pantalla.')),
+          SnackBar(
+            content: const Text('Solo los usuarios pueden registrar quejas desde esta pantalla.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       print('Error al obtener el rol: $e en ${DateTime.now()}');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al cargar permisos. Contacta al administrador.')),
+        SnackBar(
+          content: const Text('Error al cargar permisos. Contacta al administrador.'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       );
       Navigator.pushReplacementNamed(context, '/login');
     }
@@ -70,6 +90,14 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           final bytes = await pickedFile.readAsBytes();
           if ((await isValidImageBytes(bytes)).isValid) {
             setState(() => selectedImage = bytes);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Imagen seleccionada correctamente'),
+                backgroundColor: Colors.green.shade700,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            );
           } else {
             throw Exception('Imagen inválida en web');
           }
@@ -79,10 +107,23 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           if (validation.isValid) {
             if (validation.format == 'heic') {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Formato HEIC detectado. Se convertirá a JPEG.')),
+                SnackBar(
+                  content: const Text('Formato HEIC detectado. Se convertirá a JPEG.'),
+                  backgroundColor: Colors.green.shade700,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               );
             }
             setState(() => selectedImage = file);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Imagen seleccionada correctamente'),
+                backgroundColor: Colors.green.shade700,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            );
           } else {
             throw Exception('Imagen inválida en móvil: ${validation.error}');
           }
@@ -90,13 +131,28 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
       } catch (e) {
         print('Error al seleccionar imagen: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al seleccionar imagen: $e')),
+          SnackBar(
+            content: Text('Error al seleccionar imagen: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       }
     }
   }
 
-  void _removeImage() => setState(() => selectedImage = null);
+  void _removeImage() => setState(() {
+        selectedImage = null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Imagen eliminada'),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      });
 
   Future<void> _createNotification(String userId, String title, String role, Map<String, dynamic> complaintData) async {
     try {
@@ -115,7 +171,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         'neighborhood': complaintData['neighborhood'],
         'recipient': complaintData['recipient'],
         'imageUrl': complaintData['imageUrl'],
-        'senderEmail': senderEmail, // Cambiado de senderName a senderEmail
+        'senderEmail': senderEmail,
       };
       await FirebaseFirestore.instance.collection('notifications').add(notificationData);
       print('Notificación creada para userId: $userId, senderEmail: $senderEmail en ${DateTime.now()}');
@@ -165,7 +221,6 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         final complaintRef = await FirebaseFirestore.instance.collection('complaints').add(complaintData);
         complaintData['complaintId'] = complaintRef.id;
 
-        // Notificación para el usuario
         await _createNotification(
           user.uid,
           'Queja Enviada',
@@ -173,7 +228,6 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
           complaintData,
         );
 
-        // Notificación para empresa o autoridad según el recipient
         final recipient = _controllers['recipient']!.text;
         final recipientDoc = await FirebaseFirestore.instance.collection('recipients').doc(recipient).get();
         if (recipientDoc.exists) {
@@ -191,13 +245,23 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Queja enviada exitosamente')),
+          SnackBar(
+            content: const Text('Queja enviada exitosamente'),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
         Navigator.pop(context);
       } catch (e) {
         print('Error al enviar queja: $e en ${DateTime.now()}');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar queja: $e')),
+          SnackBar(
+            content: Text('Error al enviar queja: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       } finally {
         setState(() => isLoading = false);
@@ -226,119 +290,290 @@ class _ComplaintScreenState extends State<ComplaintScreen> {
   @override
   void dispose() {
     for (var controller in _controllers.values) controller.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (userRole == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Colors.green)),
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Colors.green.shade700),
+              const SizedBox(height: 16),
+              Text(
+                'Cargando permisos...',
+                style: TextStyle(color: Colors.green.shade700, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Registrar Queja', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.green[700],
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Registrar Queja', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.green[100]!, Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green.shade100, Colors.white],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.4],
+            ),
+          ),
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Card(
+                    elevation: 8,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    color: Colors.white.withOpacity(0.95),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth > 600 ? 500 : double.infinity,
+                        ),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Información de la Queja',
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                key: 'description',
+                                label: 'Descripción de la queja',
+                                icon: Icons.description,
+                                maxLines: 4,
+                                validator: (v) => (v?.isEmpty ?? true) || (v?.length ?? 0) < 10 ? 'Mínimo 10 caracteres' : null,
+                                hintText: 'Describe el problema en detalle',
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                key: 'address',
+                                label: 'Dirección',
+                                icon: Icons.location_on,
+                                validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
+                                hintText: 'Ej. Calle 10 #5-20',
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                key: 'neighborhood',
+                                label: 'Barrio',
+                                icon: Icons.home,
+                                validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
+                                hintText: 'Ej. Centro',
+                              ),
+                              const SizedBox(height: 16),
+                              _buildDropdown(
+                                key: 'recipient',
+                                hint: 'Selecciona un destinatario',
+                                items: [
+                                  'Interaseo Valledupar',
+                                  'Autoridad Ambiental',
+                                  'Alcaldía de Valledupar',
+                                ],
+                                icon: Icons.person,
+                                validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
+                                hintText: 'Selecciona una entidad',
+                              ),
+                              const SizedBox(height: 24),
+                              const Text(
+                                'Agregar Imagen (Opcional)',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildImageButton(
+                                    icon: Icons.camera_alt,
+                                    label: 'Tomar foto',
+                                    onPressed: () => _pickImage(ImageSource.camera),
+                                  ),
+                                  _buildImageButton(
+                                    icon: Icons.photo,
+                                    label: 'Subir imagen',
+                                    onPressed: () => _pickImage(ImageSource.gallery),
+                                  ),
+                                ],
+                              ),
+                              if (selectedImage != null) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.green.shade700, width: 2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.topRight,
+                                    children: [
+                                      kIsWeb
+                                          ? Image.memory(selectedImage as Uint8List, height: 150, fit: BoxFit.cover)
+                                          : Image.file(selectedImage as File, height: 150, fit: BoxFit.cover),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, color: Colors.red),
+                                        onPressed: _removeImage,
+                                        tooltip: 'Eliminar imagen',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 24),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                                child: ElevatedButton(
+                                  onPressed: isLoading ? null : _submitComplaint,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade700,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 4,
+                                  ),
+                                  child: isLoading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Enviar Queja',
+                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
-        child: _buildForm(),
       ),
     );
   }
 
-  Widget _buildForm() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          children: [
-            _buildTextField('description', 'Descripción', maxLines: 4, validator: (v) =>
-                (v?.isEmpty ?? true) || (v?.length ?? 0) < 10 ? 'Mínimo 10 caracteres' : null),
-            const SizedBox(height: 10),
-            _buildTextField('address', 'Dirección', validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null),
-            const SizedBox(height: 10),
-            _buildTextField('neighborhood', 'Barrio', validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null),
-            const SizedBox(height: 10),
-            _buildDropdown('recipient', 'Selecciona un destinatario', [
-              'Interaseo Valledupar',
-              'Autoridad Ambiental',
-              'Alcaldía de Valledupar',
-            ], validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: isLoading ? null : () => _pickImage(ImageSource.camera),
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Tomar foto'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                ),
-                ElevatedButton.icon(
-                  onPressed: isLoading ? null : () => _pickImage(ImageSource.gallery),
-                  icon: const Icon(Icons.photo),
-                  label: const Text('Subir imagen'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                ),
-              ],
-            ),
-            if (selectedImage != null) ...[
-              const SizedBox(height: 10),
-              kIsWeb
-                  ? Image.memory(selectedImage as Uint8List, height: 100, fit: BoxFit.cover)
-                  : Image.file(selectedImage as File, height: 100, fit: BoxFit.cover),
-              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: _removeImage),
-            ],
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: isLoading ? null : _submitComplaint,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              child: isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Enviar Queja'),
-            ),
-          ],
+  Widget _buildTextField({
+    required String key,
+    required String label,
+    required IconData icon,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+    String? hintText,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: TextFormField(
+        controller: _controllers[key]!,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hintText,
+          labelStyle: TextStyle(color: Colors.green.shade700),
+          prefixIcon: Icon(icon, color: Colors.green.shade700),
+          suffixIcon: _controllers[key]!.text.isNotEmpty
+              ? Icon(Icons.check_circle, color: Colors.green.shade700, size: 20)
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.9),
+        ),
+        maxLines: maxLines,
+        validator: validator,
+        enabled: !isLoading,
+        onChanged: (value) => setState(() {}),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String key,
+    required String hint,
+    required List<String> items,
+    required IconData icon,
+    String? Function(String?)? validator,
+    String? hintText,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: DropdownButtonFormField<String>(
+        value: _controllers[key]!.text.isNotEmpty ? _controllers[key]!.text : null,
+        hint: Text(hint, style: TextStyle(color: Colors.green.shade700)),
+        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 16)))).toList(),
+        onChanged: isLoading ? null : (value) => setState(() => _controllers[key]!.text = value ?? ''),
+        validator: validator,
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon, color: Colors.green.shade700),
+          suffixIcon: _controllers[key]!.text.isNotEmpty
+              ? Icon(Icons.check_circle, color: Colors.green.shade700, size: 20)
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.green.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.9),
         ),
       ),
     );
   }
 
-  Widget _buildTextField(String key, String label, {int maxLines = 1, String? Function(String?)? validator}) {
-    return TextFormField(
-      controller: _controllers[key]!,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-      maxLines: maxLines,
-      validator: validator,
-      enabled: !isLoading,
-    );
-  }
-
-  Widget _buildDropdown(String key, String hint, List<String> items, {String? Function(String?)? validator}) {
-    return DropdownButtonFormField<String>(
-      value: _controllers[key]!.text.isNotEmpty ? _controllers[key]!.text : null,
-      hint: Text(hint),
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-      onChanged: isLoading ? null : (value) => setState(() => _controllers[key]!.text = value ?? ''),
-      validator: validator,
-      decoration: const InputDecoration(border: OutlineInputBorder()),
+  Widget _buildImageButton({required IconData icon, required String label, required VoidCallback onPressed}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: ElevatedButton.icon(
+        onPressed: isLoading ? null : onPressed,
+        icon: Icon(icon, size: 24, color: Colors.white),
+        label: Text(label, style: const TextStyle(fontSize: 14, color: Colors.white)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green.shade700,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
+        ),
+      ),
     );
   }
 }

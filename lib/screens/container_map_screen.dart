@@ -126,6 +126,19 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
     }
   }
 
+  void _clearMap() {
+    print('Limpiando mapa en ${DateTime.now()}');
+    if (mounted) {
+      setState(() {
+        _polylines.clear();
+        _markers.clear();
+        _suggestions.clear();
+        _searchController.clear();
+      });
+      _loadContainerMarkers();
+    }
+  }
+
   void _onSearchChanged(String value) async {
     if (value.isEmpty) {
       if (mounted) {
@@ -209,11 +222,7 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
                   markerId: MarkerId(doc.id),
                   position: pos,
                   icon: _containerIcon ?? BitmapDescriptor.defaultMarker,
-                  infoWindow: InfoWindow(
-                    title: address ?? 'Contenedor',
-                    snippet: 'Estado: $estado',
-                    onTap: () => _mostrarRutaHastaContenedor(pos),
-                  ),
+                  onTap: () => _showContainerInfo(pos, address ?? 'Contenedor', estado),
                 ),
               );
             }
@@ -227,6 +236,48 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
           );
         }
       }),
+    );
+  }
+
+  void _showContainerInfo(LatLng position, String address, String estado) {
+    print('Mostrando información del contenedor en ${DateTime.now()}');
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Información del Contenedor'),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.8, // Ancho expandido
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Dirección: $address', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Estado: $estado', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cerrar'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _mostrarRutaHastaContenedor(position);
+              },
+              child: const Text('Cómo llegar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -365,7 +416,7 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mapa de Contenedores'),
+        title: const Text('Mapa de Contenedores', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.green[700],
       ),
       body: Stack(
@@ -441,11 +492,29 @@ class _ContainerMapScreenState extends State<ContainerMapScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _centrarEnMiUbicacion,
-        backgroundColor: Colors.green[700],
-        child: const Icon(Icons.my_location),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FloatingActionButton(
+            onPressed: _centrarEnMiUbicacion,
+            backgroundColor: Colors.white,
+            heroTag: 'location',
+            child: const Icon(Icons.my_location, color: Colors.blue),
+            tooltip: 'Centrar en mi ubicación',
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            onPressed: _clearMap,
+            backgroundColor: Colors.green[700],
+            heroTag: 'clear',
+            child: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Limpiar mapa',
+          ),
+          const SizedBox(height: 16),
+        ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
   }
 }

@@ -11,7 +11,7 @@ class AdminPanelScreen extends StatelessWidget {
       return {'role': '', 'name': 'Administrador', 'email': ''};
     }
     try {
-      print('Fetching data for user: ${user.uid}'); // Log para depuración
+      print('Fetching data for user: ${user.uid}');
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -57,12 +57,12 @@ class AdminPanelScreen extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
-                fontSize: 22,
+                fontSize: 24,
                 letterSpacing: 0.5,
               ),
             ),
-            backgroundColor: const Color(0xFF0D3B66),
-            elevation: 0,
+            backgroundColor: Colors.green.shade700,
+            elevation: 2,
             iconTheme: const IconThemeData(color: Colors.white),
             actions: isDesktop
                 ? [
@@ -73,11 +73,13 @@ class AdminPanelScreen extends StatelessWidget {
                         icon: const Icon(Icons.logout, size: 20),
                         label: const Text('Cerrar Sesión'),
                         style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.transparent,
-                          side: const BorderSide(color: Colors.white70),
+                          foregroundColor: Colors.green.shade700,
+                          backgroundColor: Colors.white,
+                          side: BorderSide(color: Colors.green.shade200),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          elevation: 2,
+                          shadowColor: Colors.green.shade100,
                         ),
                       ),
                     ),
@@ -90,9 +92,9 @@ class AdminPanelScreen extends StatelessWidget {
               if (isDesktop)
                 Container(
                   width: 280,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF0D3B66), Color(0xFF1E4066)],
+                      colors: [Colors.green.shade700, Colors.green.shade500],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -103,7 +105,7 @@ class AdminPanelScreen extends StatelessWidget {
                 child: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFEFF3F8), Color(0xFFFFFFFF)],
+                      colors: [Color(0xFFECEFF1), Color(0xFFFFFFFF)],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -131,16 +133,16 @@ class AdminPanelScreen extends StatelessWidget {
       future: _getUserData(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
+          return Center(child: CircularProgressIndicator(color: Colors.green.shade700));
         }
         final userData = snapshot.data ?? {'role': '', 'name': 'Administrador', 'email': ''};
         final userRole = userData['role'] ?? '';
         final userName = userData['name'] ?? 'Administrador';
         final userEmail = userData['email'] ?? '';
         return Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF0D3B66), Color(0xFF1E4066)],
+              colors: [Colors.green.shade700, Colors.green.shade500],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -155,9 +157,9 @@ class AdminPanelScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CircleAvatar(
-                      radius: 30, // Reducido para evitar overflow
+                      radius: 32,
                       backgroundColor: Colors.white.withOpacity(0.9),
-                      child: Icon(Icons.person, size: 36, color: const Color(0xFF0D3B66)),
+                      child: Icon(Icons.person, size: 40, color: Colors.green.shade700),
                     ),
                     const SizedBox(height: 12),
                     Flexible(
@@ -165,7 +167,7 @@ class AdminPanelScreen extends StatelessWidget {
                         userName,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.5,
                         ),
@@ -177,8 +179,9 @@ class AdminPanelScreen extends StatelessWidget {
                       child: Text(
                         userEmail.isNotEmpty ? userEmail : 'Gestión de Residuos',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 14,
+                          letterSpacing: 0.3,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -238,13 +241,14 @@ class AdminPanelScreen extends StatelessWidget {
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
             ),
           ),
           onTap: onTap,
-          hoverColor: Colors.white.withOpacity(0.1),
+          hoverColor: Colors.green.shade300.withOpacity(0.3),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         ),
       ),
     );
@@ -255,69 +259,59 @@ class AdminPanelScreen extends StatelessWidget {
       future: _getUserData(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
+          return Center(child: CircularProgressIndicator(color: Colors.green.shade700));
         }
-        final userRole = snapshot.data?['role'] ?? '';
+        final userData = snapshot.data ?? {'role': '', 'name': 'Administrador', 'email': ''};
+        final userRole = userData['role'] ?? '';
         return LayoutBuilder(
           builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth > 1200 ? 4 : constraints.maxWidth > 800 ? 3 : 2;
+            final crossAxisCount = isDesktop ? 3 : 2;
+            final itemCount = isDesktop ? 5 : (userRole == 'administrador' ? 5 : 4);
             return SingleChildScrollView(
-              padding: EdgeInsets.all(isDesktop ? 40 : 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Dashboard',
-                    style: TextStyle(
-                      fontSize: isDesktop ? 32 : 28,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0D3B66),
-                      letterSpacing: 0.5,
+              padding: EdgeInsets.all(isDesktop ? 24 : 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - kToolbarHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Dashboard',
+                      style: TextStyle(
+                        fontSize: isDesktop ? 34 : 30,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.green.shade800,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 32),
-                  GridView.count(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 20,
-                    childAspectRatio: isDesktop ? 1.3 : 1.2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      _buildGridButton(
-                        context,
-                        icon: Icons.admin_panel_settings,
-                        label: 'Vista de Reportes',
-                        route: '/reportes',
-                      ),
-                      _buildGridButton(
-                        context,
-                        icon: Icons.delete,
-                        label: 'Estado de Contenedores',
-                        route: '/contenedores',
-                      ),
-                      _buildGridButton(
-                        context,
-                        icon: Icons.map,
-                        label: 'Rutas',
-                        route: '/rutas',
-                      ),
-                      _buildGridButton(
-                        context,
-                        icon: Icons.add_location_alt,
-                        label: 'Agregar Contenedor',
-                        route: '/agregarContenedor',
-                      ),
-                      if (userRole == 'administrador')
-                        _buildGridButton(
+                    const SizedBox(height: 24),
+                    GridView.count(
+                      crossAxisCount: crossAxisCount,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: isDesktop ? 1.2 : 1.3,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: List.generate(itemCount, (index) {
+                        final items = [
+                          {'icon': Icons.admin_panel_settings, 'label': 'Vista de Reportes', 'route': '/reportes', 'iconColor': Colors.blue[600]},
+                          {'icon': Icons.delete, 'label': 'Estado de Contenedores', 'route': '/contenedores', 'iconColor': Colors.purple[600]},
+                          {'icon': Icons.map, 'label': 'Rutas', 'route': '/rutas', 'iconColor': Colors.orange[600]},
+                          {'icon': Icons.add_location_alt, 'label': 'Agregar Contenedor', 'route': '/agregarContenedor', 'iconColor': Colors.teal[600]},
+                          if (userRole == 'administrador')
+                            {'icon': Icons.school, 'label': 'Secciones Educativas', 'route': '/educational_content', 'iconColor': Colors.indigo[600]},
+                        ];
+                        final item = items[index];
+                        return _buildGridButton(
                           context,
-                          icon: Icons.school,
-                          label: 'Secciones Educativas',
-                          route: '/educational_content',
-                        ),
-                    ],
-                  ),
-                ],
+                          icon: item['icon'] as IconData,
+                          label: item['label'] as String,
+                          route: item['route'] as String,
+                          iconColor: item['iconColor'] as Color,
+                        );
+                      }),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -326,22 +320,23 @@ class AdminPanelScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildGridButton(BuildContext context, {required IconData icon, required String label, required String route}) {
+  Widget _buildGridButton(BuildContext context, {required IconData icon, required String label, required String route, required Color iconColor}) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () => Navigator.pushNamed(context, route),
         child: Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: Colors.grey[100],
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[300]!, width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.15),
+                  color: Colors.grey[200]!.withOpacity(0.3),
                   spreadRadius: 2,
                   blurRadius: 8,
                   offset: const Offset(0, 4),
@@ -356,16 +351,16 @@ class AdminPanelScreen extends StatelessWidget {
                   duration: const Duration(milliseconds: 200),
                   child: Icon(
                     icon,
-                    size: 48,
-                    color: const Color(0xFF00A884),
+                    size: 40,
+                    color: iconColor,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF0D3B66),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[700],
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
                   ),
