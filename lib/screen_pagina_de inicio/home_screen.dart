@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:async/async.dart';
+import 'package:firebase_prueba2/screen_pagina_de%20inicio/chatbot_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,6 +12,7 @@ import 'package:firebase_prueba2/panel_administrativo_screen/image_viewer_screen
 import 'package:firebase_prueba2/panel_administrativo_screen/video_player_screen.dart';
 import 'package:firebase_prueba2/panel_administrativo_screen/content_upload_screen.dart';
 import 'package:stream_transform/stream_transform.dart' as stream_transform;
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -547,7 +549,7 @@ void _viewContent(BuildContext context, DocumentSnapshot doc) {
                         child: Column(
                           children: [
                             Text(
-                              'Bienvenido a Gestión de Residuos',
+                              'Bienvenido a Ecovalle',
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
@@ -740,56 +742,69 @@ void _viewContent(BuildContext context, DocumentSnapshot doc) {
         ],
       ),
       floatingActionButton: FutureBuilder<String>(
-        future: FirebaseAuth.instance.currentUser != null
-            ? _getUserRole(FirebaseAuth.instance.currentUser!.uid)
-            : Future.value('sin rol'),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SizedBox.shrink();
-          }
-          if (snapshot.data != 'administrador') {
-            return const SizedBox.shrink();
-          }
-          return PopupMenuButton<String>(
-            onSelected: (String value) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ContentUploadScreen(type: value),
-                ),
-              );
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'image',
-                child: Row(
-                  children: [
-                    Icon(Icons.image, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('Subir Imagen'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'video',
-                child: Row(
-                  children: [
-                    Icon(Icons.videocam, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('Subir Video'),
-                  ],
-                ),
-              ),
-            ],
-            child: FloatingActionButton(
-              onPressed: null,
-              backgroundColor: Colors.green.shade600,
-              child: const Icon(Icons.add, color: Colors.white),
-              tooltip: 'Subir Contenido',
-            ),
+  future: FirebaseAuth.instance.currentUser != null
+      ? _getUserRole(FirebaseAuth.instance.currentUser!.uid)
+      : Future.value('sin rol'),
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const SizedBox.shrink();
+    }
+    if (snapshot.data != 'administrador') {
+      // MODIFICACIÓN AQUÍ: Si no es administrador, muestra el botón de Ecobot
+      return FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => ChatbotScreen()),
           );
         },
+        label: const Text('Pregúntale a Ecobot', style: TextStyle(color: Colors.white)),
+        icon: const Icon(Icons.chat, color: Colors.white),
+        backgroundColor: Colors.blue.shade600, // Un color diferente para el chatbot
+        tooltip: 'Pregúntale a Ecobot',
+      );
+    }
+    // El resto del código para el administrador se mantiene
+    return PopupMenuButton<String>(
+      onSelected: (String value) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ContentUploadScreen(type: value),
+          ),
+        );
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'image',
+          child: Row(
+            children: [
+              Icon(Icons.image, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Subir Imagen'),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'video',
+          child: Row(
+            children: [
+              Icon(Icons.videocam, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Subir Video'),
+            ],
+          ),
+        ),
+      ],
+      child: FloatingActionButton(
+        onPressed: null,
+        backgroundColor: Colors.green.shade600,
+        child: const Icon(Icons.add, color: Colors.white),
+        tooltip: 'Subir Contenido',
       ),
+    );
+  },
+),
     );
   }
 

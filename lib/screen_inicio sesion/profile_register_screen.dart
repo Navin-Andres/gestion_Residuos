@@ -1,4 +1,4 @@
-import 'package:firebase_prueba2/screens/email_credential_screen.dart';
+import 'package:firebase_prueba2/screen_inicio%20sesion/email_credential_screen.dart';
 import 'package:flutter/material.dart';
 import 'google_register_screen.dart';
 
@@ -135,7 +135,7 @@ class _ProfileRegisterScreenState extends State<ProfileRegisterScreen> with Sing
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Image.asset(
-                                'assets/arbol.png',
+                                'assets/icons/arbol.png',
                                 height: 80,
                                 width: 80,
                                 errorBuilder: (context, error, stackTrace) => const Icon(

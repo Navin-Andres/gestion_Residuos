@@ -281,8 +281,9 @@ class _AgregarContenedorScreenState extends State<AgregarContenedorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agregar/Eliminar Contenedor'),
+        title: const Text('Agregar/Eliminar Contenedor', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.green[700],
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Column(
         children: [

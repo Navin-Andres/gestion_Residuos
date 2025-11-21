@@ -36,7 +36,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset(
-                'assets/arbol.png',
+                'assets/icons/arbol.png',
                 height: 120,
                 width: 120,
                 errorBuilder: (context, error, stackTrace) => const Icon(

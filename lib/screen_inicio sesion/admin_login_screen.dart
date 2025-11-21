@@ -124,7 +124,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Image.asset(
-                        'assets/arbol.png',
+                        'assets/icons/arbol.png',
                         height: 80,
                         width: 80,
                         errorBuilder: (context, error, stackTrace) => const Icon(

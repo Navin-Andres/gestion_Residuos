@@ -342,7 +342,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     color: Colors.white.withOpacity(0.95),
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(16), // Reducido de 24 a 16
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxWidth: constraints.maxWidth > 600 ? 500 : double.infinity,
@@ -354,9 +354,9 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                             children: [
                               const Text(
                                 'Información de la Queja',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green), // Reducido de 20 a 18
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12), // Reducido de 16 a 12
                               _buildTextField(
                                 key: 'description',
                                 label: 'Descripción de la queja',
@@ -365,7 +365,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                 validator: (v) => (v?.isEmpty ?? true) || (v?.length ?? 0) < 10 ? 'Mínimo 10 caracteres' : null,
                                 hintText: 'Describe el problema en detalle',
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12), // Reducido de 16 a 12
                               _buildTextField(
                                 key: 'address',
                                 label: 'Dirección',
@@ -373,7 +373,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                 validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
                                 hintText: 'Ej. Calle 10 #5-20',
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12), // Reducido de 16 a 12
                               _buildTextField(
                                 key: 'neighborhood',
                                 label: 'Barrio',
@@ -381,7 +381,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                 validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
                                 hintText: 'Ej. Centro',
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12), // Reducido de 16 a 12
                               _buildDropdown(
                                 key: 'recipient',
                                 hint: 'Selecciona un destinatario',
@@ -394,12 +394,12 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                 validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
                                 hintText: 'Selecciona una entidad',
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 16), // Reducido de 24 a 16
                               const Text(
                                 'Agregar Imagen (Opcional)',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green), // Reducido de 18 a 16
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12), // Reducido de 16 a 12
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
@@ -416,7 +416,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                 ],
                               ),
                               if (selectedImage != null) ...[
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12), // Reducido de 16 a 12
                                 Container(
                                   decoration: BoxDecoration(
                                     border: Border.all(color: Colors.green.shade700, width: 2),
@@ -426,8 +426,8 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                     alignment: Alignment.topRight,
                                     children: [
                                       kIsWeb
-                                          ? Image.memory(selectedImage as Uint8List, height: 150, fit: BoxFit.cover)
-                                          : Image.file(selectedImage as File, height: 150, fit: BoxFit.cover),
+                                          ? Image.memory(selectedImage as Uint8List, height: 120, fit: BoxFit.cover) // Reducido de 150 a 120
+                                          : Image.file(selectedImage as File, height: 120, fit: BoxFit.cover), // Reducido de 150 a 120
                                       IconButton(
                                         icon: const Icon(Icons.delete, color: Colors.red),
                                         onPressed: _removeImage,
@@ -437,7 +437,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                   ),
                                 ),
                               ],
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 16), // Reducido de 24 a 16
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 300),
                                 curve: Curves.easeInOut,
@@ -446,7 +446,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade700,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 32), // Reducido de 16 a 12
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     elevation: 4,
                                   ),
@@ -491,7 +491,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 8), // Reducido de 16 a 8
       child: TextFormField(
         controller: _controllers[key]!,
         decoration: InputDecoration(
@@ -532,7 +532,7 @@ class _ComplaintScreenState extends State<ComplaintScreen> with SingleTickerProv
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 8), // Reducido de 16 a 8
       child: DropdownButtonFormField<String>(
         value: _controllers[key]!.text.isNotEmpty ? _controllers[key]!.text : null,
         hint: Text(hint, style: TextStyle(color: Colors.green.shade700)),

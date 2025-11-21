@@ -19,6 +19,31 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   String? _errorMessage;
   bool _isLoading = false;
+  bool _isLongPressing = false;
+
+  void _onLongPressStart() {
+    setState(() {
+      _isLongPressing = true;
+    });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (_isLongPressing) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminLoginScreen()),
+        );
+        setState(() {
+          _isLongPressing = false;
+        });
+      }
+    });
+  }
+
+  void _onLongPressEnd() {
+    setState(() {
+      _isLongPressing = false;
+    });
+  }
 
   Future<void> _loginWithEmailPassword() async {
     setState(() {
@@ -138,14 +163,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Image.asset(
-                        'assets/arbol.png',
-                        height: 50,
-                        width: 50,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          Icons.eco,
-                          size: 50,
-                          color: Colors.green,
+                      GestureDetector(
+                        onLongPressStart: (_) => _onLongPressStart(),
+                        onLongPressEnd: (_) => _onLongPressEnd(),
+                        onLongPressCancel: () => _onLongPressEnd(),
+                        child: Image.asset(
+                          'assets/icons/arbol.png',
+                          height: 50,
+                          width: 50,
+                          errorBuilder: (context, error, stackTrace) => const Icon(
+                            Icons.eco,
+                            size: 50,
+                            color: Colors.green,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -299,18 +329,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AdminLoginScreen()),
-          );
-        },
-        backgroundColor: Colors.green,
-        child: const Icon(Icons.admin_panel_settings),
-        elevation: 6,
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }

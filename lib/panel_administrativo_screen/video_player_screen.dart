@@ -166,89 +166,76 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> with SingleTicker
                         ),
                       )
                     : _controller.value.isInitialized
-                        ? Column(
+                        ? Stack(
+                            alignment: Alignment.bottomCenter,
                             children: [
                               AspectRatio(
                                 aspectRatio: _controller.value.aspectRatio,
                                 child: VideoPlayer(_controller),
                               ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                              Positioned(
+                                bottom: 80, // Adjust as needed for spacing
+                                left: 16,
+                                right: 16,
+                                child: VideoProgressIndicator(
+                                  _controller,
+                                  allowScrubbing: true,
+                                  colors: VideoProgressColors(
+                                    playedColor: Colors.green.shade600,
+                                    bufferedColor: Colors.green.shade200,
+                                    backgroundColor: Colors.grey.shade300,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 20, // Adjust as needed
+                                left: 0,
+                                right: 0,
                                 child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(
-                                      _formatDuration(_controller.value.position),
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 12,
+                                    IconButton(
+                                      icon: Icon(
+                                        _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                        color: Colors.white,
+                                        size: 32,
                                       ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _controller.value.isPlaying
+                                              ? _controller.pause()
+                                              : _controller.play();
+                                        });
+                                      },
                                     ),
-                                    Expanded(
-                                      child: VideoProgressIndicator(
-                                        _controller,
-                                        allowScrubbing: true,
-                                        colors: VideoProgressColors(
-                                          playedColor: Colors.green.shade600,
-                                          bufferedColor: Colors.green.shade200,
-                                          backgroundColor: Colors.grey.shade300,
-                                        ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.stop,
+                                        color: Colors.white,
+                                        size: 32,
                                       ),
+                                      onPressed: () {
+                                        _controller.seekTo(Duration.zero);
+                                        _controller.pause();
+                                        setState(() {});
+                                      },
                                     ),
-                                    Text(
-                                      _formatDuration(_controller.value.duration),
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 12,
+                                    IconButton(
+                                      icon: Icon(
+                                        _controller.value.volume > 0 ? Icons.volume_up : Icons.volume_off,
+                                        color: Colors.white,
+                                        size: 32,
                                       ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _controller.value.volume > 0
+                                              ? _controller.setVolume(0.0)
+                                              : _controller.setVolume(1.0);
+                                        });
+                                      },
                                     ),
                                   ],
                                 ),
-                              ),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(
-                                      _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                                      color: Colors.green.shade600,
-                                      size: 32,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _controller.value.isPlaying
-                                            ? _controller.pause()
-                                            : _controller.play();
-                                      });
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                      Icons.stop,
-                                      color: Colors.green.shade600,
-                                      size: 32,
-                                    ),
-                                    onPressed: () {
-                                      _controller.seekTo(Duration.zero);
-                                      _controller.pause();
-                                      setState(() {});
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                      _controller.value.volume > 0 ? Icons.volume_up : Icons.volume_off,
-                                      color: Colors.green.shade600,
-                                      size: 32,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _controller.value.volume > 0
-                                            ? _controller.setVolume(0.0)
-                                            : _controller.setVolume(1.0);
-                                      });
-                                    },
-                                  ),
-                                ],
                               ),
                             ],
                           )
