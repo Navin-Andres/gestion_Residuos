@@ -1,45 +1,60 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# ==========================
+# FLUTTER IGNORE
+# ==========================
 .dart_tool/
+.packages
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
+.generated/
+flutter_export_environment.sh
 
-# Symbolication related
-app.*.symbols
+# Build
+build/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+android/.gradle/
+android/.idea/
+android/local.properties
 
-# Obfuscation related
-app.*.map.json
+# ==========================
+# FIREBASE (Bloquea secretos)
+# ==========================
+# Android Firebase config
+android/app/google-services.json
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# iOS Firebase config
+ios/Runner/GoogleService-Info.plist
+
+# Firebase Hosting cache
+.firebase/
+.firebase/**
+
+# Firebase service accounts
+**/*serviceAccount*.json
+**/*-service-account.json
+**/firebase-adminsdk*.json
+
+# Cualquier JSON sensible en /assets
+assets/*.json
+
+# ==========================
+# CREDENCIALES / ARCHIVOS SENSIBLES
+# ==========================
+*.env
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+*.der
+
+# ==========================
+# VISUAL STUDIO CODE
+# ==========================
+.vscode/
+
+# ==========================
+# LOGS
+# ==========================
+*.log
+logs/
