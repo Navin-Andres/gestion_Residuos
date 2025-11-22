@@ -58,3 +58,6 @@ assets/*.json
 # ==========================
 *.log
 logs/
+assets/*.json
+*.json
+assets/*.json
