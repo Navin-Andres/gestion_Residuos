@@ -61,3 +61,5 @@ logs/
 assets/*.json
 *.json
 assets/*.json
+assets/*.json
+**/*-*.json
